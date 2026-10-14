@@ -114,7 +114,7 @@ export function SecureVerificationDialog(props: SecureVerificationDialogProps) {
           ? t('Verify your identity to finish signing in.')
           : t('Confirm your identity before accessing this sensitive action.'))
       }
-      contentClassName='sm:max-w-md'
+      contentClassName='auth-classic-dialog sm:max-w-md'
       contentHeight='auto'
       titleClassName='flex items-center gap-2'
       footer={

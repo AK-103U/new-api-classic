@@ -1,0 +1,139 @@
+/* Classic-auth appearance mapping. Keep these selectors scoped to auth pages
+ * so visual restoration never changes shared UI or authentication behavior. */
+[data-auth-skin='classic'] {
+  background-color: #f3f4f6;
+  color: var(--foreground);
+  padding-top: max(3rem, env(safe-area-inset-top, 0px));
+  padding-bottom: max(3rem, env(safe-area-inset-bottom, 0px));
+}
+
+.dark [data-auth-skin='classic'] {
+  background-color: var(--background);
+}
+
+[data-auth-skin='classic'] [data-auth-part='glow-indigo'],
+[data-auth-skin='classic'] [data-auth-part='glow-teal'] {
+  position: absolute;
+  z-index: 0;
+  width: min(22.5rem, 82vw);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(7.5rem);
+  pointer-events: none;
+}
+
+[data-auth-skin='classic'] [data-auth-part='glow-indigo'] {
+  top: -5rem;
+  right: -5rem;
+  background: #6366f1;
+  opacity: 0.2;
+}
+
+[data-auth-skin='classic'] [data-auth-part='glow-teal'] {
+  top: 45%;
+  left: -7.5rem;
+  background: #14b8a6;
+  opacity: 0.16;
+}
+
+[data-auth-skin='classic'] [data-auth-part='brand'] {
+  color: var(--foreground);
+  text-decoration: none;
+}
+
+[data-auth-skin='classic'] [data-auth-part='panel'] {
+  gap: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 1rem;
+  padding: 0;
+  box-shadow: 0 1rem 2.5rem rgb(15 23 42 / 8%);
+}
+
+.dark [data-auth-skin='classic'] [data-auth-part='panel'] {
+  box-shadow: 0 1rem 2.5rem rgb(0 0 0 / 24%);
+}
+
+[data-auth-skin='classic'] [data-auth-part='content'] {
+  padding: 2rem 1.5rem;
+}
+
+[data-auth-skin='classic'] [data-auth-part='page'] {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+[data-auth-skin='classic'] [data-auth-part='intro'] {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  text-align: center;
+}
+
+[data-auth-skin='classic'] [data-auth-part='intro'] h2 {
+  text-align: center;
+}
+
+[data-auth-skin='classic'] [data-auth-part='intro'] p {
+  text-align: center;
+}
+
+[data-auth-skin='classic'] [data-auth-part='content'] form {
+  gap: 0.875rem;
+}
+
+[data-auth-skin='classic'] [data-auth-part='content'] [data-slot='form-label'] {
+  font-weight: 500;
+}
+
+[data-auth-skin='classic']
+  [data-auth-part='content']
+  input[data-slot='form-control'] {
+  min-height: 2.75rem;
+  border-radius: 0.625rem;
+  padding-inline: 0.875rem;
+}
+
+[data-auth-skin='classic']
+  [data-auth-part='content']
+  form
+  [data-slot='button']:not([aria-label='Toggle password visibility']),
+[data-auth-skin='classic'] [data-auth-part='primary-action'] {
+  min-height: 3rem;
+  border-radius: 9999px;
+}
+
+[data-auth-skin='classic'] [data-auth-part='content'] a {
+  text-underline-offset: 0.2em;
+}
+
+.auth-classic-dialog {
+  border-radius: 1rem;
+}
+
+.auth-classic-dialog input[data-slot='form-control'] {
+  min-height: 2.75rem;
+  border-radius: 0.625rem;
+  padding-inline: 0.875rem;
+}
+
+.auth-classic-dialog [data-slot='dialog-footer'] [data-slot='button'],
+.auth-classic-dialog
+  form
+  [data-slot='button']:not([aria-label='Toggle password visibility']) {
+  min-height: 2.75rem;
+  border-radius: 9999px;
+}
+
+@media (max-width: 639px) {
+  [data-auth-skin='classic'] {
+    padding-right: max(1rem, env(safe-area-inset-right, 0px));
+    padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  }
+
+  [data-auth-skin='classic'] [data-auth-part='content'] {
+    padding: 1.5rem 1.25rem;
+  }
+}

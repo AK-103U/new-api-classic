@@ -86,7 +86,7 @@ export function TelegramLoginDialog(props: TelegramLoginDialogProps) {
       onOpenChange={props.onOpenChange}
       title={t('Telegram Login Widget')}
       description={t('Continue with Telegram')}
-      contentClassName='max-w-sm'
+      contentClassName='auth-classic-dialog max-w-sm'
       contentHeight='auto'
       bodyClassName='space-y-4'
     >
