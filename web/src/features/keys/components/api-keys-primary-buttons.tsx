@@ -63,7 +63,9 @@ export function ApiKeysPrimaryButtons() {
   return (
     <div className='flex flex-wrap gap-2'>
       <Popover>
-        <PopoverTrigger render={<Button variant='outline' size='sm' />}>
+        <PopoverTrigger
+          render={<Button variant='outline' size='sm' className='md:hidden' />}
+        >
           <Globe aria-hidden='true' />
           {t('API Addresses')}
           <ChevronDown aria-hidden='true' />

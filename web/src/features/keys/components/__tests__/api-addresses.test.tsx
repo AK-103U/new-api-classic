@@ -81,7 +81,9 @@ it('shows every configured address and copies only the chosen visible URL', asyn
     ],
   })
 
-  await user.click(screen.getByRole('button', { name: 'API Addresses' }))
+  const addressesButton = screen.getByRole('button', { name: 'API Addresses' })
+  expect(addressesButton).toHaveClass('md:hidden')
+  await user.click(addressesButton)
   const dialog = await screen.findByRole('dialog', { name: 'API Addresses' })
   const rows = within(dialog).getAllByRole('listitem')
   expect(rows).toHaveLength(2)
