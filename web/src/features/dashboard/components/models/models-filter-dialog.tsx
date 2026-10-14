@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Filter, RotateCcw, Calendar, Search } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { DateTimePicker } from '@/components/datetime-picker'
@@ -59,6 +59,7 @@ interface ModelsFilterProps {
   onReset: () => void
   titleKey?: string
   descriptionKey?: string
+  trigger?: ReactElement
 }
 
 // Quick-range presets imply a sensible granularity (matching the app's
@@ -150,8 +151,9 @@ export function ModelsFilter(props: ModelsFilterProps) {
     value: Date | string | undefined
   ) => {
     setFilters((prev) => ({ ...prev, [field]: value }))
-    if (field === 'start_timestamp' || field === 'end_timestamp')
+    if (field === 'start_timestamp' || field === 'end_timestamp') {
       setSelectedRange(null)
+    }
   }
 
   const handleQuickRange = (days: number) => {
@@ -171,10 +173,12 @@ export function ModelsFilter(props: ModelsFilterProps) {
       open={open}
       onOpenChange={handleOpenChange}
       trigger={
-        <Button variant='outline' size='sm'>
-          <Filter className='mr-2 h-4 w-4' />
-          {t('Filter')}
-        </Button>
+        props.trigger ?? (
+          <Button variant='outline' size='sm'>
+            <Filter className='mr-2 h-4 w-4' />
+            {t('Filter')}
+          </Button>
+        )
       }
       title={t(props.titleKey ?? 'Model Analytics Filters')}
       description={t(
@@ -257,12 +261,10 @@ export function ModelsFilter(props: ModelsFilterProps) {
           <div className='grid gap-2'>
             <Label htmlFor='time_granularity'>{t('Time Granularity')}</Label>
             <Select
-              items={[
-                ...TIME_GRANULARITY_OPTIONS.map((option) => ({
-                  value: option.value,
-                  label: t(option.label),
-                })),
-              ]}
+              items={TIME_GRANULARITY_OPTIONS.map((option) => ({
+                value: option.value,
+                label: t(option.label),
+              }))}
               value={filters.time_granularity}
               onValueChange={(value) =>
                 handleChange('time_granularity', value as TimeGranularity)

@@ -40,6 +40,7 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import type { SidebarData } from '@/components/layout/types'
+import { getDashboardSectionRequiredRole } from '@/features/dashboard/section-registry'
 import { ROLE } from '@/lib/roles'
 
 /**
@@ -82,6 +83,7 @@ export function useSidebarData(): SidebarData {
             title: t('Dashboard'),
             url: '/dashboard/models',
             icon: LayoutDashboard,
+            requiredRole: getDashboardSectionRequiredRole('models'),
           },
           {
             title: t('API Keys'),

@@ -49,7 +49,7 @@ import {
 import {
   type DashboardSectionId,
   DASHBOARD_DEFAULT_SECTION,
-  DASHBOARD_SECTION_IDS,
+  getVisibleDashboardSectionIds,
 } from './section-registry'
 import type {
   DashboardChartPreferences,
@@ -247,8 +247,8 @@ export function Dashboard() {
   const isAdmin = Boolean(userRole && userRole >= ROLE.ADMIN)
   const visibleSections = useMemo(
     () =>
-      DASHBOARD_SECTION_IDS.filter(
-        (section) => section !== 'overview' && (section !== 'users' || isAdmin)
+      getVisibleDashboardSectionIds(isAdmin).filter(
+        (section) => section !== 'overview'
       ),
     [isAdmin]
   )

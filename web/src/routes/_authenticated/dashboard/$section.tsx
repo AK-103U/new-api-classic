@@ -22,10 +22,19 @@ import { Dashboard } from '@/features/dashboard'
 import {
   DASHBOARD_SECTION_IDS,
   DASHBOARD_DEFAULT_SECTION,
+  canAccessDashboardSection,
 } from '@/features/dashboard/section-registry'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/_authenticated/dashboard/$section')({
   beforeLoad: ({ params }) => {
+    const { auth } = useAuthStore.getState()
+    const isAdmin = Boolean(auth.user && auth.user.role >= ROLE.ADMIN)
+    if (!canAccessDashboardSection(params.section, isAdmin)) {
+      throw redirect({ to: '/403' })
+    }
+
     const validSections = DASHBOARD_SECTION_IDS as unknown as string[]
     if (!validSections.includes(params.section)) {
       throw redirect({

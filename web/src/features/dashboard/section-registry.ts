@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import type { TFunction } from 'i18next'
 
 import { createSectionRegistry } from '@/features/system-settings/utils/section-registry'
+import { ROLE } from '@/lib/roles'
 
 /**
  * Dashboard page section definitions
@@ -32,6 +33,7 @@ const DASHBOARD_SECTIONS = [
   {
     id: 'models',
     titleKey: 'Model Call Analytics',
+    adminOnly: true,
     build: () => null,
   },
   {
@@ -49,7 +51,32 @@ const DASHBOARD_SECTIONS = [
 
 export type DashboardSectionId = (typeof DASHBOARD_SECTIONS)[number]['id']
 
-const ADMIN_ONLY_SECTIONS = new Set<string>(['users'])
+const ADMIN_ONLY_SECTIONS = new Set<string>(
+  DASHBOARD_SECTIONS.filter(
+    (section) => 'adminOnly' in section && section.adminOnly
+  ).map((section) => section.id)
+)
+
+export function canAccessDashboardSection(
+  section: string,
+  isAdmin = false
+): boolean {
+  return isAdmin || !ADMIN_ONLY_SECTIONS.has(section)
+}
+
+export function getDashboardSectionRequiredRole(
+  section: string
+): number | undefined {
+  return ADMIN_ONLY_SECTIONS.has(section) ? ROLE.ADMIN : undefined
+}
+
+export function getVisibleDashboardSectionIds(
+  isAdmin = false
+): DashboardSectionId[] {
+  return DASHBOARD_SECTION_IDS.filter((section) =>
+    canAccessDashboardSection(section, isAdmin)
+  )
+}
 
 const dashboardRegistry = createSectionRegistry<
   DashboardSectionId,
@@ -69,9 +96,9 @@ export function getDashboardSectionNavItems(
   t: TFunction,
   options?: { isAdmin?: boolean }
 ) {
-  const all = dashboardRegistry.getSectionNavItems(t)
-  if (options?.isAdmin) return all
-  return all.filter(
-    (_, idx) => !ADMIN_ONLY_SECTIONS.has(DASHBOARD_SECTIONS[idx].id)
-  )
+  return dashboardRegistry
+    .getSectionNavItems(t)
+    .filter((_, idx) =>
+      canAccessDashboardSection(DASHBOARD_SECTIONS[idx].id, options?.isAdmin)
+    )
 }
