@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from '@tanstack/react-table'
-import { GitBranch, Sparkles, KeyRound } from 'lucide-react'
+import { CircleHelp, GitBranch, KeyRound, Sparkles } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -53,7 +53,7 @@ import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
-import { LOG_TYPE_ALL_VALUE } from '../../constants'
+import { LOG_TYPE_ALL_VALUE, LOG_TYPE_ENUM } from '../../constants'
 import type { UsageLog } from '../../data/schema'
 import {
   formatModelName,
@@ -782,6 +782,51 @@ export function useCommonLogsColumns(
         },
       },
 
+      {
+        accessorKey: 'ip',
+        header: () => (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span className='inline-flex cursor-help items-center gap-1' />
+                }
+              >
+                {t('IP')}
+                <CircleHelp
+                  className='text-muted-foreground size-3.5'
+                  aria-hidden='true'
+                />
+              </TooltipTrigger>
+              <TooltipContent>
+                {t(
+                  'IP is recorded for usage and error logs only when the user enables IP logging'
+                )}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ),
+        cell: ({ row }) => {
+          const log = row.original
+          const shouldShowIp =
+            log.type === LOG_TYPE_ENUM.CONSUME ||
+            log.type === LOG_TYPE_ENUM.ERROR ||
+            (isAdmin && log.type === LOG_TYPE_ENUM.TOPUP)
+
+          if (!shouldShowIp || !log.ip) return null
+
+          return (
+            <StatusBadge
+              label={log.ip}
+              variant='orange'
+              copyText={log.ip}
+              className='rounded-full bg-orange-50 px-2 dark:bg-orange-950/35'
+            />
+          )
+        },
+        meta: { label: t('IP') },
+        size: 140,
+      },
       {
         accessorKey: 'use_time',
         header: t('Timing'),

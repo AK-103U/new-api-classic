@@ -3302,6 +3302,7 @@
     "IP": "IP",
     "IP Address": "IPアドレス",
     "IP Filter Mode": "IP フィルターモード",
+    "IP is recorded for usage and error logs only when the user enables IP logging": "ユーザーがIP記録を有効にした場合に限り、利用ログとエラーログにIPが記録されます",
     "IP Restriction": "IP制限",
     "IP Whitelist (supports CIDR)": "IP ホワイトリスト（CIDR対応）",
     "IP: {{ip}} · Method: {{method}}": "IP: {{ip}} · 方法: {{method}}",

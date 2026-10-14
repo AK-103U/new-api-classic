@@ -3302,6 +3302,7 @@
     "IP": "IP",
     "IP Address": "IP-адрес",
     "IP Filter Mode": "Режим фильтрации IP",
+    "IP is recorded for usage and error logs only when the user enables IP logging": "IP записывается в журналы использования и ошибок только если пользователь включил запись IP",
     "IP Restriction": "Ограничение IP",
     "IP Whitelist (supports CIDR)": "Белый список IP (поддерживает CIDR)",
     "IP: {{ip}} · Method: {{method}}": "IP: {{ip}} · Способ: {{method}}",

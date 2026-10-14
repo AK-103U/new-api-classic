@@ -45,6 +45,7 @@ interface LogsFilterToolbarProps<TData> {
   primaryFilters: ReactNode
   advancedFilters?: ReactNode
   compactMobile?: boolean
+  classicLayout?: boolean
   mobilePinnedFilters?: ReactNode
   mobileFilters?: ReactNode
   mobileFilterCount?: number
@@ -244,13 +245,24 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
 
   return (
     <div
+      data-filter-layout={props.classicLayout ? 'classic' : undefined}
       className={cn(
-        'bg-card/50 rounded-lg border p-2.5 sm:p-3',
+        props.classicLayout
+          ? 'rounded-none border-0 bg-transparent p-0'
+          : 'bg-card/50 rounded-lg border p-2.5 sm:p-3',
         props.className
       )}
     >
       <div className='flex flex-wrap items-start gap-2'>
-        <div className='grid min-w-0 flex-1 grid-cols-1 gap-2 sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]'>
+        <div
+          data-filter-fields={props.classicLayout ? '' : undefined}
+          className={cn(
+            'grid min-w-0 flex-1 grid-cols-1 gap-2',
+            props.classicLayout
+              ? 'md:grid-cols-2 lg:grid-cols-4'
+              : 'sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]'
+          )}
+        >
           {props.primaryFilters}
         </div>
         {advancedToggle && (
@@ -266,10 +278,22 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
         </div>
       )}
 
-      <div className='mt-2 flex flex-wrap items-center gap-2'>
+      <div
+        data-filter-actions={props.classicLayout ? '' : undefined}
+        className={cn(
+          'mt-2 flex flex-wrap items-center gap-2',
+          props.classicLayout && 'mt-3'
+        )}
+      >
         {props.stats}
-        <div className='ms-auto flex flex-wrap items-center justify-end gap-1.5 sm:gap-2'>
-          {props.actionStart}
+        {props.classicLayout && props.actionStart}
+        <div
+          className={cn(
+            'ms-auto flex flex-wrap items-center justify-end gap-1.5 sm:gap-2',
+            props.classicLayout && 'w-full sm:w-auto'
+          )}
+        >
+          {!props.classicLayout && props.actionStart}
           <Button
             type='button'
             variant='outline'

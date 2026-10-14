@@ -145,9 +145,14 @@ it('loads personal groups and filters choices without submitting until Search', 
   expect(api.get).not.toHaveBeenCalledWith('/api/group/')
 })
 
-it('loads all groups in the administrator view', async () => {
+it('shows administrator filters by default and loads all groups', async () => {
   useAuthStore.getState().auth.setUser({ id: 1, username: 'admin', role: 10 })
   await renderFilter()
+  expect(screen.getByPlaceholderText('Username')).toBeVisible()
+  expect(screen.getByPlaceholderText('Channel ID')).toBeVisible()
+  expect(
+    screen.queryByRole('button', { name: 'Expand' })
+  ).not.toBeInTheDocument()
   await userEvent.click(screen.getByRole('combobox', { name: 'Group' }))
   expect(await screen.findByRole('option', { name: 'premium' })).toBeVisible()
   expect(api.get).toHaveBeenCalledWith('/api/group/')

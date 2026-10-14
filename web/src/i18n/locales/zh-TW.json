@@ -3302,6 +3302,7 @@
     "IP": "IP",
     "IP Address": "IP 地址",
     "IP Filter Mode": "IP 過濾模式",
+    "IP is recorded for usage and error logs only when the user enables IP logging": "僅當使用者啟用 IP 記錄時，才會在使用和錯誤日誌中記錄 IP",
     "IP Restriction": "IP 限制",
     "IP Whitelist (supports CIDR)": "IP 白名單（支援 CIDR 表達式）",
     "IP: {{ip}} · Method: {{method}}": "IP：{{ip}} · 登入方式：{{method}}",

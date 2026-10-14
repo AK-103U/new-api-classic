@@ -27,6 +27,7 @@ import {
   DataTableRow,
   useDataTable,
 } from '@/components/data-table'
+import { Card } from '@/components/ui/card'
 import {
   getAdminPlans,
   getSelfSubscriptionFull,
@@ -87,7 +88,7 @@ interface UsageLogsTableProps {
 export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   const { t } = useTranslation()
   const getColumnClassName = useCallback(
-    () => (logCategory === 'common' ? 'py-2' : 'py-3.5'),
+    () => (logCategory === 'common' ? 'py-1.5' : 'py-3.5'),
     [logCategory]
   )
   const {
@@ -227,10 +228,16 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
 
   const isCommon = logCategory === 'common'
 
-  return (
+  const dataTablePage = (
     <DataTablePage
       table={table}
+      className={isCommon ? 'p-3 sm:p-4' : undefined}
       compactPagination={isMobile && isCommon}
+      paginationInFooter={!isCommon}
+      paginationInContent={isCommon}
+      paginationClassName={
+        isCommon ? 'border-border/70 mt-2 border-t pt-3' : undefined
+      }
       columns={columns as ColumnDef<Record<string, unknown>>[]}
       isLoading={isLoadingData}
       isFetching={isFetching}
@@ -241,8 +248,11 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       skeletonKeyPrefix='usage-log-skeleton'
       applyHeaderSize
       tableClassName={cn(
-        '[&_[data-slot=table]]:text-[13px] [&_[data-slot=table]_td]:text-[13px] [&_[data-slot=table]_td_*]:text-[13px] [&_[data-slot=table]_th]:text-[13px] [&_[data-slot=table]_th_*]:text-[13px]'
+        '[&_[data-slot=table]]:text-[13px] [&_[data-slot=table]_td]:text-[13px] [&_[data-slot=table]_td_*]:text-[13px] [&_[data-slot=table]_th]:text-[13px] [&_[data-slot=table]_th_*]:text-[13px]',
+        isCommon && 'rounded-xl border-border/70'
       )}
+      tableHeaderClassName={isCommon ? '[&_th]:h-9' : undefined}
+      tableBodyClassName={isCommon ? '[&>tr]:h-11' : undefined}
       mobile={
         <UsageLogsMobileList
           table={table}
@@ -283,5 +293,18 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
         )
       }}
     />
+  )
+
+  if (!isCommon) return dataTablePage
+
+  return (
+    <Card
+      data-usage-logs-panel='common'
+      role='region'
+      aria-label={t('Common Logs')}
+      className='bg-card h-full min-h-0 gap-0 overflow-hidden rounded-2xl p-0 shadow-sm'
+    >
+      {dataTablePage}
+    </Card>
   )
 }

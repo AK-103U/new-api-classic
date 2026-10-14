@@ -3302,6 +3302,7 @@
     "IP": "IP",
     "IP Address": "Adresse IP",
     "IP Filter Mode": "Mode de filtre IP",
+    "IP is recorded for usage and error logs only when the user enables IP logging": "L’adresse IP n’est enregistrée dans les journaux d’utilisation et d’erreurs que si l’utilisateur a activé son enregistrement",
     "IP Restriction": "Restriction IP",
     "IP Whitelist (supports CIDR)": "Liste blanche IP (supporte CIDR)",
     "IP: {{ip}} · Method: {{method}}": "IP : {{ip}} · Méthode : {{method}}",
