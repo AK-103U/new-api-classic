@@ -24,6 +24,15 @@ var channelsIDM map[int]*Channel                     // all channels include dis
 var channel2advancedCustomConfig map[int]*kitdto.AdvancedCustomConfig
 var channelSyncLock sync.RWMutex
 
+func addChannelToGroupCache(cache map[string]map[string][]int, group string, model string, channelID int) {
+	models, ok := cache[group]
+	if !ok || models == nil {
+		models = make(map[string][]int)
+		cache[group] = models
+	}
+	models[model] = append(models[model], channelID)
+}
+
 func InitChannelCache() {
 	if !common.MemoryCacheEnabled {
 		InvalidatePricingCache()
@@ -58,12 +67,8 @@ func InitChannelCache() {
 		}
 		groups := strings.SplitSeq(channel.Group, ",")
 		for group := range groups {
-			models := channel.GetModels()
-			for _, model := range models {
-				if _, ok := newGroup2model2channels[group][model]; !ok {
-					newGroup2model2channels[group][model] = make([]int, 0)
-				}
-				newGroup2model2channels[group][model] = append(newGroup2model2channels[group][model], channel.Id)
+			for _, model := range channel.GetModels() {
+				addChannelToGroupCache(newGroup2model2channels, group, model, channel.Id)
 			}
 		}
 	}
