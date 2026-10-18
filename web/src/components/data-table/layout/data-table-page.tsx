@@ -216,16 +216,6 @@ export type DataTablePageProps<TData> = {
   paginationInFooter?: boolean
 
   /**
-   * Render inline pagination inside the page's flex layout. Useful when the
-   * table and its footer share a bounded card; the table keeps the remaining
-   * height and scrolls independently.
-   */
-  paginationInContent?: boolean
-
-  /** Additional classes for inline pagination wrapper. */
-  paginationClassName?: string
-
-  /**
    * Extra content rendered between the table/mobile list and the pagination.
    * E.g. summary stats, helper text.
    */
@@ -253,9 +243,6 @@ export type DataTablePageProps<TData> = {
    * outside the scrollable body automatically.
    */
   tableHeaderClassName?: string
-
-  /** Desktop `<TableBody>` className override for density adjustments. */
-  tableBodyClassName?: string
 
   /**
    * Opt into the table/card view toggle. Defaults to `false`, so existing
@@ -367,14 +354,13 @@ export function DataTablePage<TData>(props: DataTablePageProps<TData>) {
         {mobileNode}
         {desktopNode}
         {props.afterTable}
-        {props.paginationInContent && paginationNode}
       </div>
 
       {/* Bulk actions are typically a fixed-position toolbar; let the consumer
           handle its own visibility, we just gate it to non-mobile. */}
       {(!showMobile || props.showMobileBulkActions) && props.bulkActions}
 
-      {!props.paginationInContent && paginationNode}
+      {paginationNode}
     </>
   )
 }
@@ -416,15 +402,10 @@ function renderPagination<TData>(
     />
   )
 
-  const renderInFooter =
-    props.paginationInFooter !== false && !props.paginationInContent
-
-  return renderInFooter ? (
+  return props.paginationInFooter !== false ? (
     <PageFooterPortal>{pagination}</PageFooterPortal>
   ) : (
-    <div className={cn('shrink-0 pt-2', props.paginationClassName)}>
-      {pagination}
-    </div>
+    <div className='pt-2'>{pagination}</div>
   )
 }
 
@@ -565,7 +546,6 @@ function renderDesktop<TData>(
         fixedHeight && '[background-color:var(--table-header)]',
         props.tableHeaderClassName
       )}
-      tableBodyClassName={props.tableBodyClassName}
       getColumnClassName={props.getColumnClassName}
       pinnedColumns={props.pinnedColumns}
       containerClassName={cn(

@@ -128,26 +128,6 @@ afterEach(() => {
   localStorage.clear()
 })
 
-test('keeps common stats, table, and pagination inside one card panel', async () => {
-  await renderLogs({
-    role: ROLE.USER,
-    enabledPlans: [],
-    activeSubscription: false,
-  })
-
-  const panel = screen.getByRole('region', { name: 'Common Logs' })
-  expect(panel).toContainElement(screen.getByText('Usage'))
-  expect(panel).toContainElement(
-    screen.getByRole('columnheader', { name: 'Time' })
-  )
-  expect(panel).toContainElement(
-    screen.getByRole('columnheader', { name: 'IP' })
-  )
-  expect(panel).toContainElement(
-    screen.getByRole('button', { name: 'Go to next page' })
-  )
-})
-
 test.each([{ enabledPlans: [] }, { enabledPlans: [false] }])(
   'hides the wallet icon in admin view when no plan is enabled but keeps the subscription marker ($enabledPlans)',
   async ({ enabledPlans }) => {

@@ -32,28 +32,16 @@ import { useLogsViewScope, useUsageLogsContext } from './usage-logs-provider'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
 
-type StatTone = 'blue' | 'pink' | 'neutral'
-
-const STAT_TONES: Record<StatTone, string> = {
-  blue: 'border-blue-200/80 bg-blue-50/80 text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/35 dark:text-blue-200',
-  pink: 'border-pink-200/80 bg-pink-50/80 text-pink-800 dark:border-pink-900/60 dark:bg-pink-950/35 dark:text-pink-200',
-  neutral: 'border-border/60 bg-muted/45 text-foreground dark:bg-muted/30',
-}
-
 function StatBadge(props: {
   label: string
   value: string | number
-  tone: StatTone
+  accent: string
 }) {
   return (
-    <span
-      className={cn(
-        'inline-flex h-9 items-center gap-2 rounded-lg border px-3.5 text-xs font-medium shadow-sm',
-        STAT_TONES[props.tone]
-      )}
-    >
-      <span className='opacity-75'>{props.label}</span>
-      <span className='font-mono font-semibold tabular-nums'>
+    <span className='border-border/60 bg-muted/25 inline-flex h-7 items-center gap-2 rounded-md border px-2.5 text-xs shadow-xs'>
+      <span className={cn('h-3.5 w-0.5 rounded-full', props.accent)} />
+      <span className='text-muted-foreground'>{props.label}</span>
+      <span className='text-foreground/85 font-mono font-semibold tabular-nums'>
         {props.value}
       </span>
     </span>
@@ -91,9 +79,9 @@ export function CommonLogsStats() {
   if (isLoading) {
     return (
       <div className='flex items-center gap-2'>
-        <Skeleton className='h-9 w-[150px] rounded-lg' />
-        <Skeleton className='h-9 w-[100px] rounded-lg' />
-        <Skeleton className='h-9 w-[120px] rounded-lg' />
+        <Skeleton className='h-7 w-[150px] rounded-md' />
+        <Skeleton className='h-7 w-[100px] rounded-md' />
+        <Skeleton className='h-7 w-[120px] rounded-md' />
       </div>
     )
   }
@@ -103,10 +91,18 @@ export function CommonLogsStats() {
       <StatBadge
         label={t('Usage')}
         value={sensitiveVisible ? formatLogQuota(stats?.quota || 0) : '••••'}
-        tone='blue'
+        accent='bg-sky-500/70'
       />
-      <StatBadge label={t('RPM')} value={stats?.rpm || 0} tone='pink' />
-      <StatBadge label={t('TPM')} value={stats?.tpm || 0} tone='neutral' />
+      <StatBadge
+        label={t('RPM')}
+        value={stats?.rpm || 0}
+        accent='bg-rose-500/65'
+      />
+      <StatBadge
+        label={t('TPM')}
+        value={stats?.tpm || 0}
+        accent='bg-slate-400/70'
+      />
     </div>
   )
 }

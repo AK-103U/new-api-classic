@@ -30,19 +30,18 @@ import { CommonLogsStats } from './common-logs-stats'
 import { useUsageLogsContext } from './usage-logs-provider'
 
 /**
- * Summary row for the Common Logs view: live usage stats plus a toggle for
- * masking sensitive values (token names, usernames, group names, and the
- * quota figure shown in stats). Kept above the desktop filter toolbar.
+ * Page-header actions for the Common Logs view: live usage stats plus a
+ * toggle for masking sensitive values (token names, usernames, group names,
+ * and the quota figure shown in stats). Both controls live in the page
+ * header so the toolbar below stays focused on filter inputs and form
+ * actions only.
  */
 export function CommonLogsHeaderActions() {
   const { t } = useTranslation()
   const { sensitiveVisible, setSensitiveVisible } = useUsageLogsContext()
 
   return (
-    <div
-      data-usage-log-stats='classic'
-      className='border-border/70 flex flex-wrap items-center justify-between gap-2 border-b pb-3'
-    >
+    <div className='flex flex-wrap items-center gap-2'>
       <CommonLogsStats />
       <Tooltip>
         <TooltipTrigger

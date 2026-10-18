@@ -70,11 +70,11 @@ function Fixture() {
     </UsageLogsProvider>
   )
 }
-async function renderMobileFilter(isMobile = true) {
+async function renderMobileFilter() {
   const original = window.matchMedia
   vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
     ...original(query),
-    matches: isMobile && query === '(max-width: 640px)',
+    matches: query === '(max-width: 640px)',
   }))
   vi.spyOn(api, 'get').mockImplementation(async (url) => ({
     data: {
@@ -107,9 +107,7 @@ async function renderMobileFilter(isMobile = true) {
       <RouterProvider router={router} />
     </QueryClientProvider>
   )
-  await screen.findByRole('button', {
-    name: isMobile ? 'Filter' : 'Search',
-  })
+  await screen.findByRole('button', { name: 'Filter' })
   return router
 }
 afterEach(async () => {
@@ -124,33 +122,6 @@ afterEach(async () => {
   vi.restoreAllMocks()
   vi.useRealTimers()
   await i18next.changeLanguage('en')
-})
-
-it('shows the stats row and full filter set by default on desktop', async () => {
-  await renderMobileFilter(false)
-
-  const usageLabel = await screen.findByText('Usage')
-  const tokenFilter = screen.getByPlaceholderText('Token Name')
-  expect(
-    usageLabel.compareDocumentPosition(tokenFilter) &
-      Node.DOCUMENT_POSITION_FOLLOWING
-  ).toBeTruthy()
-  expect(screen.getByPlaceholderText('Request ID')).toBeVisible()
-  expect(screen.getByPlaceholderText('Upstream Request ID')).toBeVisible()
-  expect(
-    screen.getByPlaceholderText('Request ID').closest('[data-filter-fields]')
-  ).not.toBeNull()
-  expect(
-    screen
-      .getByRole('combobox', { name: 'Type' })
-      .closest('[data-filter-actions]')
-  ).not.toBeNull()
-  expect(
-    screen.getByText('Usage').closest('[data-usage-log-stats="classic"]')
-  ).not.toBeNull()
-  expect(
-    screen.queryByRole('button', { name: 'Expand' })
-  ).not.toBeInTheDocument()
 })
 
 it('applies the selected mobile date range directly and resets pagination while retaining filters', async () => {

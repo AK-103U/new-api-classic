@@ -3302,7 +3302,6 @@
     "IP": "IP",
     "IP Address": "Địa chỉ IP",
     "IP Filter Mode": "Lọc IP",
-    "IP is recorded for usage and error logs only when the user enables IP logging": "IP chỉ được ghi lại trong nhật ký sử dụng và lỗi khi người dùng bật ghi nhật ký IP",
     "IP Restriction": "Giới hạn IP",
     "IP Whitelist (supports CIDR)": "Danh sách trắng IP (hỗ trợ CIDR)",
     "IP: {{ip}} · Method: {{method}}": "IP: {{ip}} · Phương thức: {{method}}",
