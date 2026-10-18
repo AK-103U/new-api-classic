@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   check-and-sync:
-    name: Check Upstream Changes
+    name: Check & Sync Upstream
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -26,6 +26,17 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          check-latest: true
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Configure Git
         run: |
           git config user.name "github-actions[bot]"
@@ -33,7 +44,7 @@ jobs:
           git remote add upstream https://github.com/QuantumNous/new-api.git || true
           git fetch upstream main
 
-      - name: Check for new commits
+      - name: Check for new upstream commits
         id: check
         run: |
           UPSTREAM_REV=$(git rev-parse upstream/main)
@@ -43,28 +54,117 @@ jobs:
             echo "Upstream is up to date, no new commits."
           else
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
-            echo "New commits detected in upstream."
+            echo "upstream_rev=$UPSTREAM_REV" >> "$GITHUB_OUTPUT"
+            echo "local_base=$LOCAL_BASE" >> "$GITHUB_OUTPUT"
+
+            # 导出上游提交列表与统计到临时文件供后续使用
+            git log --oneline --no-merges "${LOCAL_BASE}..upstream/main" | head -n 35 > upstream_commits.txt
+            git diff --stat "${LOCAL_BASE}..upstream/main" | tail -n 1 > upstream_stats.txt
           fi
 
-      - name: Create Sync Branch and PR
+      - name: Perform Merge & Pre-flight Build Check
+        if: steps.check.outputs.has_changes == 'true'
+        id: merge
+        run: |
+          BRANCH="upstream-sync"
+          git checkout -B "$BRANCH" HEAD
+
+          # 1. 尝试合入上游代码
+          if ! git merge upstream/main -m "chore(sync): sync upstream changes ($(date +%Y-%m-%d))"; then
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+            git merge --abort
+            exit 0
+          fi
+          echo "conflict=false" >> "$GITHUB_OUTPUT"
+
+          # 2. 预检: 后端 Go 编译
+          BUILD_STATUS="success"
+          BUILD_ERR=""
+          if ! go build ./...; then
+            BUILD_STATUS="failed"
+            BUILD_ERR="后端 Go 编译失败，可能存在类型或包引用变更"
+          fi
+
+          # 3. 预检: 前端 TypeScript 类型检查
+          if [ "$BUILD_STATUS" = "success" ]; then
+            if ! (cd web && bun install --frozen-lockfile && bun run typecheck); then
+              BUILD_STATUS="failed"
+              BUILD_ERR="前端 TypeScript 类型检查失败"
+            fi
+          fi
+
+          echo "build_status=$BUILD_STATUS" >> "$GITHUB_OUTPUT"
+          echo "build_err=$BUILD_ERR" >> "$GITHUB_OUTPUT"
+
+          # 4. 推送到固定的单一分支 (强制推送刷新)
+          git push -f origin "$BRANCH"
+
+      - name: Handle PR or Conflict Issue
         if: steps.check.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          BRANCH_NAME="upstream-sync-$(date +%Y%m%d)"
-          git checkout -b "$BRANCH_NAME"
+          BRANCH="upstream-sync"
 
-          if git merge upstream/main -m "chore(sync): sync upstream changes $(date +%Y-%m-%d)"; then
-            git push -u origin "$BRANCH_NAME"
-            gh pr create \
-              --title "chore: 同步上游更新 $(date +%Y-%m-%d)" \
-              --body "上游检测到新提交，已自动合并且无冲突。请审查测试后合并至 main 分支。" \
-              --base main \
-              --head "$BRANCH_NAME"
+          # 1. 冲突处理 (幂等：避免每天重复发 Issue 轰炸)
+          if [ "${{ steps.merge.outputs.conflict }}" = "true" ]; then
+            cat << 'EOF' > conflict_body.md
+## ⚠️ 上游更新合并存在冲突
+
+检测到上游有新提交，但在自动合并到当前定制分支时产生冲突。请在本地手动拉取并解决冲突。
+
+### 📝 上游更新提交清单
+```text
+EOF
+            cat upstream_commits.txt >> conflict_body.md
+            cat << 'EOF' >> conflict_body.md
+```
+EOF
+            EXISTING_ISSUE=$(gh issue list --search "⚠️ 上游更新合并存在冲突" --state open --json number -q '.[0].number')
+            if [ -n "$EXISTING_ISSUE" ]; then
+              gh issue comment "$EXISTING_ISSUE" --body-file conflict_body.md
+              echo "已更新冲突 Issue #${EXISTING_ISSUE}"
+            else
+              gh issue create --title "⚠️ 上游更新合并存在冲突 ($(date +%Y-%m-%d))" --body-file conflict_body.md
+            fi
+            exit 0
+          fi
+
+          # 2. 合并成功处理 (自动更新同一 PR)
+          PR_TITLE="chore(sync): 同步上游更新 $(date +%Y-%m-%d)"
+          if [ "${{ steps.merge.outputs.build_status }}" = "failed" ]; then
+            PR_TITLE="⚠️ [构建未通过] 同步上游更新 $(date +%Y-%m-%d)"
+          fi
+
+          cat << 'EOF' > pr_body.md
+## 🔄 上游更新自动合并报告
+
+**上游改动概览：**
+- 统计：`$(cat upstream_stats.txt)`
+EOF
+
+          if [ "${{ steps.merge.outputs.build_status }}" = "success" ]; then
+            echo "- 构建预检：✅ **后端编译与前端类型检查全部通过**" >> pr_body.md
           else
-            echo "Merge conflict detected."
-            git merge --abort
-            gh issue create \
-              --title "⚠️ 上游更新合并存在冲突 ($(date +%Y-%m-%d))" \
-              --body "检测到上游有新更新，但在自动合并到当前定制分支时产生冲突，请在本地手动拉取并解决冲突。"
+            echo "- 构建预检：❌ **构建预检失败**：${{ steps.merge.outputs.build_err }}" >> pr_body.md
+          fi
+
+          cat << 'EOF' >> pr_body.md
+
+### 📝 上游提交清单
+```text
+EOF
+          cat upstream_commits.txt >> pr_body.md
+          cat << 'EOF' >> pr_body.md
+```
+
+> 本 PR 由 GitHub Actions 自动化流水线维护；当上游有新更新时会自动刷新此分支与 PR 内容。
+EOF
+
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --base main --state open --json number -q '.[0].number')
+          if [ -n "$EXISTING_PR" ]; then
+            gh pr edit "$EXISTING_PR" --title "$PR_TITLE" --body-file pr_body.md
+            echo "已更新现存 PR #${EXISTING_PR}"
+          else
+            gh pr create --title "$PR_TITLE" --body-file pr_body.md --base main --head "$BRANCH"
           fi
