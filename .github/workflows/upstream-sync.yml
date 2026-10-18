@@ -106,20 +106,22 @@ jobs:
         run: |
           BRANCH="upstream-sync"
 
-          # 1. 冲突处理 (幂等：避免每天重复发 Issue 轰炸)
           if [ "${{ steps.merge.outputs.conflict }}" = "true" ]; then
-            cat << 'EOF' > conflict_body.md
-## ⚠️ 上游更新合并存在冲突
+            python3 -c '
+          import os
+          commits = open("upstream_commits.txt").read() if os.path.exists("upstream_commits.txt") else ""
+          body = f"""## ⚠️ 上游更新合并存在冲突
 
-检测到上游有新提交，但在自动合并到当前定制分支时产生冲突。请在本地手动拉取并解决冲突。
+          检测到上游有新提交，但在自动合并到当前定制分支时产生冲突。请在本地手动拉取并解决冲突。
 
-### 📝 上游更新提交清单
-```text
-EOF
-            cat upstream_commits.txt >> conflict_body.md
-            cat << 'EOF' >> conflict_body.md
-```
-EOF
+          ### 📝 上游更新提交清单
+          ```text
+          {commits}
+          ```
+          """
+          with open("conflict_body.md", "w") as f:
+              f.write(body)
+          '
             EXISTING_ISSUE=$(gh issue list --search "⚠️ 上游更新合并存在冲突" --state open --json number -q '.[0].number')
             if [ -n "$EXISTING_ISSUE" ]; then
               gh issue comment "$EXISTING_ISSUE" --body-file conflict_body.md
@@ -130,36 +132,36 @@ EOF
             exit 0
           fi
 
-          # 2. 合并成功处理 (自动更新同一 PR)
           PR_TITLE="chore(sync): 同步上游更新 $(date +%Y-%m-%d)"
           if [ "${{ steps.merge.outputs.build_status }}" = "failed" ]; then
             PR_TITLE="⚠️ [构建未通过] 同步上游更新 $(date +%Y-%m-%d)"
           fi
 
-          cat << 'EOF' > pr_body.md
-## 🔄 上游更新自动合并报告
+          python3 -c '
+          import os
+          stats = open("upstream_stats.txt").read().strip() if os.path.exists("upstream_stats.txt") else ""
+          commits = open("upstream_commits.txt").read() if os.path.exists("upstream_commits.txt") else ""
+          status = "${{ steps.merge.outputs.build_status }}"
+          err = "${{ steps.merge.outputs.build_err }}"
 
-**上游改动概览：**
-- 统计：`$(cat upstream_stats.txt)`
-EOF
+          check_msg = "✅ **后端编译与前端类型检查全部通过**" if status == "success" else f"❌ **构建预检失败**：{err}"
 
-          if [ "${{ steps.merge.outputs.build_status }}" = "success" ]; then
-            echo "- 构建预检：✅ **后端编译与前端类型检查全部通过**" >> pr_body.md
-          else
-            echo "- 构建预检：❌ **构建预检失败**：${{ steps.merge.outputs.build_err }}" >> pr_body.md
-          fi
+          body = f"""## 🔄 上游更新自动合并报告
 
-          cat << 'EOF' >> pr_body.md
+          **上游改动概览：**
+          - 统计：`{stats}`
+          - 构建预检：{check_msg}
 
-### 📝 上游提交清单
-```text
-EOF
-          cat upstream_commits.txt >> pr_body.md
-          cat << 'EOF' >> pr_body.md
-```
+          ### 📝 上游提交清单
+          ```text
+          {commits}
+          ```
 
-> 本 PR 由 GitHub Actions 自动化流水线维护；当上游有新更新时会自动刷新此分支与 PR 内容。
-EOF
+          > 本 PR 由 GitHub Actions 自动化流水线维护；当上游有新更新时会自动刷新此分支与 PR 内容。
+          """
+          with open("pr_body.md", "w") as f:
+              f.write(body)
+          '
 
           EXISTING_PR=$(gh pr list --head "$BRANCH" --base main --state open --json number -q '.[0].number')
           if [ -n "$EXISTING_PR" ]; then
