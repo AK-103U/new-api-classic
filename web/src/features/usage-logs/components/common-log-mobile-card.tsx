@@ -188,7 +188,7 @@ export function CommonLogMobileCard<TData>(props: {
         {timing &&
           (props.cells.has('use_time') || props.cells.has('is_stream')) && (
             <div className='col-start-2 flex min-w-0 flex-col items-end gap-1 [overflow-wrap:anywhere]'>
-              {props.cells.has('is_stream') && (
+              {(props.cells.has('is_stream') || props.cells.has('use_time')) && (
                 <StreamTpsCell
                   compact
                   className='min-h-5 max-w-full min-w-0 justify-end'

@@ -324,7 +324,7 @@ test('quota saturation remains first and only billing adds to the counter', () =
       },
     },
   })
-  expect(preview.textContent).toBe('Quota clamped+1')
+  expect(preview.textContent).toBe('Quota clamped · Per-call · $0.25')
 })
 
 test.each([true, false])(
