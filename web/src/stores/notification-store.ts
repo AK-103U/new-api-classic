@@ -62,6 +62,17 @@ export const useNotificationStore = create<NotificationState>()(
 
       setClosedUntilDate: (date: string | null) => {
         set({ closedUntilDate: date })
+        try {
+          if (typeof window !== 'undefined') {
+            if (date) {
+              localStorage.setItem('notice_close_date', date)
+            } else {
+              localStorage.removeItem('notice_close_date')
+            }
+          }
+        } catch {
+          // ignore storage quota / sandbox exceptions
+        }
       },
 
       isAnnouncementRead: (key: string) => {
@@ -70,10 +81,21 @@ export const useNotificationStore = create<NotificationState>()(
 
       isNoticeClosed: () => {
         const { closedUntilDate } = get()
-        if (!closedUntilDate) return false
-
         const today = new Date().toDateString()
-        return closedUntilDate === today
+        if (closedUntilDate === today) return true
+
+        try {
+          if (
+            typeof window !== 'undefined' &&
+            localStorage.getItem('notice_close_date') === today
+          ) {
+            return true
+          }
+        } catch {
+          // ignore storage exceptions
+        }
+
+        return false
       },
     }),
     {

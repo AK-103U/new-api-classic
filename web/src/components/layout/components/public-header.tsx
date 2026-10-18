@@ -17,12 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
 import { LanguageSwitcher } from '@/components/language-switcher'
-import { NotificationPopover } from '@/components/notification-popover'
+import { NoticeModal, NotificationButton } from '@/components/notice-modal'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { Button } from '@/components/ui/button'
@@ -98,6 +98,33 @@ export function PublicHeader(props: PublicHeaderProps) {
   const isAuthenticated = !!user
   const displaySiteName = customSiteName || systemName
   const links = dynamicLinks.length > 0 ? dynamicLinks : navLinks
+
+  const hasAutoOpenedRef = useRef(false)
+  const {
+    isNoticeClosed,
+    loading: notificationsLoading,
+    notice: notificationsNotice,
+    openModal,
+  } = notifications
+
+  useEffect(() => {
+    if (hasAutoOpenedRef.current) return
+    if (
+      pathname === '/' &&
+      !isNoticeClosed() &&
+      !notificationsLoading &&
+      notificationsNotice.trim() !== ''
+    ) {
+      hasAutoOpenedRef.current = true
+      openModal('notice')
+    }
+  }, [
+    pathname,
+    isNoticeClosed,
+    notificationsLoading,
+    notificationsNotice,
+    openModal,
+  ])
 
   let logoContent: ReactNode = (
     <HeaderLogo
@@ -290,16 +317,23 @@ export function PublicHeader(props: PublicHeaderProps) {
               {showLanguageSwitcher && <LanguageSwitcher />}
               {showThemeSwitch && <ThemeSwitch />}
               {showNotifications && (
-                <NotificationPopover
-                  open={notifications.popoverOpen}
-                  onOpenChange={notifications.setPopoverOpen}
-                  unreadCount={notifications.unreadCount}
-                  activeTab={notifications.activeTab}
-                  onTabChange={notifications.setActiveTab}
-                  notice={notifications.notice}
-                  announcements={notifications.announcements}
-                  loading={notifications.loading}
-                />
+                <>
+                  <NotificationButton
+                    unreadCount={notifications.unreadCount}
+                    onClick={() => notifications.openModal()}
+                  />
+                  <NoticeModal
+                    open={notifications.modalOpen}
+                    onOpenChange={notifications.setModalOpen}
+                    activeTab={notifications.activeTab}
+                    onTabChange={notifications.setActiveTab}
+                    notice={notifications.notice}
+                    announcements={notifications.announcements}
+                    loading={notifications.loading}
+                    isAnnouncementRead={notifications.isAnnouncementRead}
+                    onCloseToday={notifications.closeToday}
+                  />
+                </>
               )}
 
               {showAuthButtons && (
@@ -312,6 +346,12 @@ export function PublicHeader(props: PublicHeaderProps) {
 
             {/* Mobile: compact actions + hamburger */}
             <div className='flex shrink-0 items-center gap-2 lg:hidden'>
+              {showNotifications && (
+                <NotificationButton
+                  unreadCount={notifications.unreadCount}
+                  onClick={() => notifications.openModal()}
+                />
+              )}
               {showThemeSwitch && <ThemeSwitch />}
               {showAuthButtons && !loading && isAuthenticated && (
                 <ProfileDropdown />

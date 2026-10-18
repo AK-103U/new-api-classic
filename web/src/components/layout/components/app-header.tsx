@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { ConfigDrawer } from '@/components/config-drawer'
 import { LanguageSwitcher } from '@/components/language-switcher'
-import { NotificationPopover } from '@/components/notification-popover'
+import { NoticeModal, NotificationButton } from '@/components/notice-modal'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Search } from '@/components/search'
 import { SystemUpdateAction } from '@/features/system-update/system-update-action'
@@ -133,16 +133,23 @@ export function AppHeader({
             <Search className='w-8 flex-none [&>span]:hidden sm:[&>span]:inline' />
           )}
           {showNotifications && (
-            <NotificationPopover
-              open={notifications.popoverOpen}
-              onOpenChange={notifications.setPopoverOpen}
-              unreadCount={notifications.unreadCount}
-              activeTab={notifications.activeTab}
-              onTabChange={notifications.setActiveTab}
-              notice={notifications.notice}
-              announcements={notifications.announcements}
-              loading={notifications.loading}
-            />
+            <>
+              <NotificationButton
+                unreadCount={notifications.unreadCount}
+                onClick={() => notifications.openModal()}
+              />
+              <NoticeModal
+                open={notifications.modalOpen}
+                onOpenChange={notifications.setModalOpen}
+                activeTab={notifications.activeTab}
+                onTabChange={notifications.setActiveTab}
+                notice={notifications.notice}
+                announcements={notifications.announcements}
+                loading={notifications.loading}
+                isAnnouncementRead={notifications.isAnnouncementRead}
+                onCloseToday={notifications.closeToday}
+              />
+            </>
           )}
           <LanguageSwitcher />
           {showConfigDrawer && <ConfigDrawer />}

@@ -65,6 +65,7 @@ function getAnnouncementKey(item: Record<string, unknown>): string {
  */
 export function useNotifications() {
   const [popoverOpen, setPopoverOpen] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'notice' | 'announcements'>(
     'notice'
   )
@@ -97,6 +98,8 @@ export function useNotifications() {
     markNoticeRead,
     markAnnouncementsRead,
     isAnnouncementRead,
+    setClosedUntilDate,
+    isNoticeClosed,
   } = useNotificationStore()
 
   // Extract notice content
@@ -157,13 +160,59 @@ export function useNotifications() {
     setPopoverOpen(false)
   }
 
+  // Handle NoticeModal open: if unread announcements exist and no tab specified, default to announcements
+  const handleOpenModal = (tab?: 'notice' | 'announcements') => {
+    const nextTab =
+      tab || (unreadCounts.announcements > 0 ? 'announcements' : 'notice')
+
+    if (nextTab === 'notice' && noticeContent) {
+      markNoticeRead(noticeContent)
+    }
+    if (nextTab === 'announcements') {
+      markAnnouncementsAsRead()
+    }
+
+    setActiveTab(nextTab)
+    setModalOpen(true)
+  }
+
+  const handleModalClose = () => {
+    if (noticeContent) {
+      markNoticeRead(noticeContent)
+    }
+    markAnnouncementsAsRead()
+    setModalOpen(false)
+  }
+
+  const handleModalOpenChange = (open: boolean) => {
+    if (open) {
+      handleOpenModal(activeTab)
+      return
+    }
+
+    handleModalClose()
+  }
+
+  const handleCloseToday = () => {
+    setClosedUntilDate(new Date().toDateString())
+    handleModalClose()
+  }
+
   // Handle tab change - mark announcements as read when switching to that tab
   const handleTabChange = (tab: 'notice' | 'announcements') => {
     setActiveTab(tab)
 
+    if (tab === 'notice' && noticeContent) {
+      markNoticeRead(noticeContent)
+    }
     if (tab === 'announcements') {
       markAnnouncementsAsRead()
     }
+  }
+
+  const isItemAnnouncementRead = (item: Record<string, unknown>) => {
+    const key = getAnnouncementKey(item)
+    return isAnnouncementRead(key)
   }
 
   return {
@@ -177,9 +226,21 @@ export function useNotifications() {
     unreadNoticeCount: unreadCounts.notice,
     unreadAnnouncementsCount: unreadCounts.announcements,
 
-    // Popover state
+    // Popover state (for backwards compatibility)
     popoverOpen,
     setPopoverOpen: handlePopoverOpenChange,
+
+    // Modal state (Classic NoticeModal)
+    modalOpen,
+    setModalOpen: handleModalOpenChange,
+    openModal: handleOpenModal,
+    closeModal: handleModalClose,
+    closeToday: handleCloseToday,
+    isNoticeClosed,
+    isAnnouncementRead: isItemAnnouncementRead,
+    getAnnouncementKey,
+
+    // Active tab
     activeTab,
     setActiveTab: handleTabChange,
 
