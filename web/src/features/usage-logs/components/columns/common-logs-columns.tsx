@@ -326,23 +326,54 @@ function buildTypeDetailSegments(
   return segments
 }
 
+function getEffectiveGroupRatio(other: LogOtherData | null): number {
+  const userGroupRatio = other?.user_group_ratio
+  if (
+    userGroupRatio != null &&
+    userGroupRatio !== -1 &&
+    Number.isFinite(userGroupRatio)
+  ) {
+    return userGroupRatio
+  }
+
+  const groupRatio = other?.group_ratio
+  if (groupRatio != null && Number.isFinite(groupRatio)) {
+    return groupRatio
+  }
+
+  return 1
+}
+
+function formatGroupRatio(ratio: number): string {
+  return ratio % 1 === 0
+    ? `${ratio}x`
+    : `${ratio.toFixed(4).replace(/\.?0+$/, '')}x`
+}
+
 /**
  * Classic Semi UI pill tag for Log Type
  */
-function renderClassicTypeTag(type: number, t: (k: string) => string) {
+function renderClassicTypeTag(
+  type: number,
+  other: LogOtherData | null,
+  t: (k: string) => string
+) {
   switch (type) {
     case 1:
       return (
         <span className='inline-flex items-center justify-center rounded-full bg-cyan-50 px-2 py-0.5 text-xs font-normal text-cyan-700 shadow-2xs dark:bg-cyan-950/40 dark:text-cyan-300'>
-          {t('Top Up')}
+          {t('Top-up')}
         </span>
       )
-    case 2:
+    case 2: {
+      const ratio = getEffectiveGroupRatio(other)
+      const ratioStr = formatGroupRatio(ratio)
       return (
-        <span className='inline-flex items-center justify-center rounded-full bg-lime-100/70 px-2 py-0.5 text-xs font-normal text-lime-800 shadow-2xs dark:bg-lime-950/40 dark:text-lime-300'>
-          {t('Consume')}
+        <span className='inline-flex items-center justify-center whitespace-nowrap rounded-full bg-lime-100/70 px-2.5 py-0.5 text-xs font-normal text-lime-800 shadow-2xs dark:bg-lime-950/40 dark:text-lime-300'>
+          {t('Consume')} {ratioStr}
         </span>
       )
+    }
     case 3:
       return (
         <span className='inline-flex items-center justify-center rounded-full bg-orange-50 px-2 py-0.5 text-xs font-normal text-orange-700 shadow-2xs dark:bg-orange-950/40 dark:text-orange-300'>
@@ -657,9 +688,10 @@ export function useCommonLogsColumns(
       header: t('Type'),
       cell: ({ row }) => {
         const log = row.original
-        return renderClassicTypeTag(log.type, t)
+        const other = parseLogOther(log.other)
+        return renderClassicTypeTag(log.type, other, t)
       },
-      size: 75,
+      size: 95,
     })
 
     // 7. Model (经典黄色圆角药丸)
