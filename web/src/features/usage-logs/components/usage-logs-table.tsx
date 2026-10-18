@@ -18,8 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
-import type { ColumnDef } from '@tanstack/react-table'
-import { useCallback } from 'react'
+import type { ColumnDef, ExpandedState } from '@tanstack/react-table'
+import * as React from 'react'
+import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -27,6 +28,8 @@ import {
   DataTableRow,
   useDataTable,
 } from '@/components/data-table'
+import { Card } from '@/components/ui/card'
+import { TableCell, TableRow } from '@/components/ui/table'
 import {
   getAdminPlans,
   getSelfSubscriptionFull,
@@ -42,12 +45,14 @@ import {
   LOG_TYPE_ALL_VALUE,
   LOG_TYPE_ENUM,
 } from '../constants'
+import type { UsageLog } from '../data/schema'
 import { shouldShowBillingSource } from '../lib/billing-source'
 import { useColumnsByCategory } from '../lib/columns'
 import { parseLogOther } from '../lib/format'
 import { fetchLogsByCategory } from '../lib/utils'
 import type { LogCategory } from '../types'
 import { CommonLogsFilterBar } from './common-logs-filter-bar'
+import { LogExpandedRow } from './log-expanded-row'
 import { TaskLogsFilterBar } from './task-logs-filter-bar'
 import { UsageLogsMobileList } from './usage-logs-mobile-card'
 import { useLogsViewScope, type LogsViewAccess } from './usage-logs-provider'
@@ -87,7 +92,7 @@ interface UsageLogsTableProps {
 export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   const { t } = useTranslation()
   const getColumnClassName = useCallback(
-    () => (logCategory === 'common' ? 'py-2' : 'py-3.5'),
+    () => (logCategory === 'common' ? 'py-1.5' : 'py-3.5'),
     [logCategory]
   )
   const {
@@ -207,6 +212,9 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   )
   const isLoadingData = isLoading || (isFetching && !data)
 
+  const isCommon = logCategory === 'common'
+  const [expanded, setExpanded] = useState<ExpandedState>({})
+
   const { table } = useDataTable({
     data: logs as Record<string, unknown>[],
     columns: columns as ColumnDef<Record<string, unknown>>[],
@@ -217,6 +225,11 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     ),
     pagination,
     enableRowSelection: false,
+    expanded,
+    onExpandedChange: (updater) => {
+      setExpanded(typeof updater === 'function' ? updater(expanded) : updater)
+    },
+    withExpandedRowModel: isCommon,
     onPaginationChange,
     onColumnFiltersChange,
     manualPagination: true,
@@ -225,12 +238,16 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     ensurePageInRange,
   })
 
-  const isCommon = logCategory === 'common'
-
-  return (
+  const dataTablePage = (
     <DataTablePage
       table={table}
+      className={isCommon ? 'p-3 sm:p-4' : undefined}
       compactPagination={isMobile && isCommon}
+      paginationInFooter={!isCommon}
+      paginationInContent={isCommon}
+      paginationClassName={
+        isCommon ? 'border-border/70 mt-2 border-t pt-3' : undefined
+      }
       columns={columns as ColumnDef<Record<string, unknown>>[]}
       isLoading={isLoadingData}
       isFetching={isFetching}
@@ -241,8 +258,11 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       skeletonKeyPrefix='usage-log-skeleton'
       applyHeaderSize
       tableClassName={cn(
-        '[&_[data-slot=table]]:text-[13px] [&_[data-slot=table]_td]:text-[13px] [&_[data-slot=table]_td_*]:text-[13px] [&_[data-slot=table]_th]:text-[13px] [&_[data-slot=table]_th_*]:text-[13px]'
+        '[&_[data-slot=table]]:text-[13px] [&_[data-slot=table]_td]:text-[13px] [&_[data-slot=table]_td_*]:text-[13px] [&_[data-slot=table]_th]:text-[13px] [&_[data-slot=table]_th_*]:text-[13px]',
+        isCommon && 'rounded-xl border-border/70'
       )}
+      tableHeaderClassName={isCommon ? '[&_th]:h-9' : undefined}
+      tableBodyClassName={isCommon ? '[&>tr]:h-11' : undefined}
       mobile={
         <UsageLogsMobileList
           table={table}
@@ -258,30 +278,72 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
         )
       }
       renderRow={(row) => {
-        const logType = (row.original as Record<string, unknown>).type as
-          | number
-          | undefined
+        const log = row.original as unknown as UsageLog
+        const logType = log.type as number | undefined
         let tintClass =
           isCommon && logType != null ? (logTypeRowTint[logType] ?? '') : ''
         if (isCommon && isAdmin) {
-          const other = parseLogOther(
-            ((row.original as Record<string, unknown>).other as string) ?? ''
-          )
+          const other = parseLogOther((log.other as string) ?? '')
           if (other?.admin_info?.quota_saturation) {
             tintClass = quotaSaturationRowTint
           }
         }
 
+        const isExpanded = isCommon && row.getIsExpanded()
+
+        const handleRowClick = (e: React.MouseEvent) => {
+          if (!isCommon) return
+          const target = e.target as HTMLElement | null
+          if (
+            target?.closest(
+              'button, a, input, select, textarea, [data-slot=popover-trigger], [data-slot=tooltip-trigger]'
+            )
+          ) {
+            return
+          }
+          row.toggleExpanded()
+        }
+
         return (
-          <DataTableRow
-            key={row.id}
-            row={row}
-            className={cn('transition-colors', tintClass)}
-            getColumnClassName={getColumnClassName}
-            cellRenderColumns={table.options.columns}
-          />
+          <React.Fragment key={row.id}>
+            <DataTableRow
+              row={row}
+              className={cn(
+                'transition-colors',
+                isCommon && 'cursor-pointer hover:bg-muted/40 select-text',
+                isExpanded && 'bg-muted/30 border-b-0',
+                tintClass
+              )}
+              onClick={handleRowClick}
+              getColumnClassName={getColumnClassName}
+              cellRenderColumns={table.options.columns}
+            />
+            {isExpanded && (
+              <TableRow className='bg-muted/10 border-b border-border/70 hover:bg-muted/15'>
+                <TableCell
+                  colSpan={row.getVisibleCells().length}
+                  className='p-0'
+                >
+                  <LogExpandedRow log={log} isAdmin={isAdmin} />
+                </TableCell>
+              </TableRow>
+            )}
+          </React.Fragment>
         )
       }}
     />
+  )
+
+  if (!isCommon) return dataTablePage
+
+  return (
+    <Card
+      data-usage-logs-panel='common'
+      role='region'
+      aria-label={t('Common Logs')}
+      className='bg-card h-full min-h-0 gap-0 overflow-hidden rounded-2xl p-0 shadow-sm'
+    >
+      {dataTablePage}
+    </Card>
   )
 }
