@@ -48,10 +48,14 @@ import { cn } from '@/lib/utils'
 import { getSortLabels, type SortOption, type ViewMode } from '../constants'
 import type { PricingModel, PricingVendor, TokenUnit } from '../types'
 import { PricingSidebar } from './pricing-sidebar'
+import { SearchBar } from './search-bar'
 
 export interface PricingToolbarProps {
   filteredCount: number
   totalCount?: number
+  searchQuery?: string
+  onSearchChange?: (value: string) => void
+  onSearchClear?: () => void
   sortBy: string
   onSortChange: (value: string) => void
   tokenUnit: TokenUnit
@@ -88,7 +92,7 @@ export function PricingToolbar(props: PricingToolbarProps) {
   return (
     <div className='bg-card rounded-xl border p-3'>
       <div className='flex flex-wrap items-center justify-between gap-3'>
-        <div className='flex items-center gap-2'>
+        <div className='flex flex-1 flex-wrap items-center gap-2 sm:gap-3'>
           <Button
             type='button'
             variant='outline'
@@ -117,6 +121,20 @@ export function PricingToolbar(props: PricingToolbarProps) {
                 </span>
               )}
           </div>
+
+          {props.onSearchChange && (
+            <div className='w-full sm:w-60 md:w-72'>
+              <SearchBar
+                value={props.searchQuery || ''}
+                onChange={props.onSearchChange}
+                onClear={props.onSearchClear || (() => {})}
+                placeholder={t(
+                  'Search model name, provider, endpoint, or tag...'
+                )}
+                className='w-full'
+              />
+            </div>
+          )}
         </div>
 
         <div className='flex min-w-0 flex-wrap items-center gap-2'>

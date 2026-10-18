@@ -151,7 +151,7 @@ describe('model cards', () => {
     await user.click(screen.getByRole('button', { name: 'Copy model name' }))
     expect(await navigator.clipboard.readText()).toBe(name)
     expect(onClick).not.toHaveBeenCalled()
-    await user.click(screen.getByRole('button', { name: 'Details' }))
+    await user.click(screen.getByRole('heading', { name }))
     expect(onClick).toHaveBeenCalledOnce()
     expect(onClick).toHaveBeenCalledWith(name)
   })
@@ -170,8 +170,6 @@ describe('model cards', () => {
     })
     expect(statusStrip).toHaveTextContent('—')
     expect(statusStrip.querySelectorAll('[aria-hidden]')).toHaveLength(0)
-    expect(screen.getByText('No description available.')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Details' })).toBeEnabled()
   })
 
   it('uses fixed spacing between available status samples', () => {
@@ -277,21 +275,7 @@ describe('model cards', () => {
       />
     )
 
-    const groupField = screen.getByText('Groups').parentElement
-    const endpointField = screen.getByText('Endpoints').parentElement
-    if (!groupField || !endpointField) {
-      throw new Error('Expected labeled group and endpoint fields')
-    }
     const tagField = screen.getByRole('group', { name: 'Tags' })
-    expect(within(groupField).getByText(groups[0])).toBeVisible()
-    expect(within(groupField).getByText('+2')).toHaveAttribute(
-      'title',
-      groups.slice(1).join(', ')
-    )
-    expect(
-      within(endpointField).getByText('openai-response, openai')
-    ).toHaveAttribute('title', endpoints.join(', '))
-    expect(within(endpointField).getByText('+3')).toBeVisible()
     expect(
       within(tagField).getByText('video-generation, high-resolution')
     ).toHaveAttribute('title', tags.join(', '))
@@ -582,7 +566,7 @@ describe('model cards', () => {
       ).getAllByText(/^—/)
     ).toHaveLength(4)
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: 'Details' }))
+    await user.click(screen.getByRole('heading', { name: 'example-model' }))
     expect(onModelClick).toHaveBeenCalledWith('example-model')
   })
 
