@@ -1,0 +1,70 @@
+name: Check and Sync Upstream
+
+on:
+  schedule:
+    # 每天 UTC 20:00 (北京时间 04:00) 自动检查上游更新
+    - cron: '0 20 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: true
+
+jobs:
+  check-and-sync:
+    name: Check Upstream Changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/QuantumNous/new-api.git || true
+          git fetch upstream main
+
+      - name: Check for new commits
+        id: check
+        run: |
+          UPSTREAM_REV=$(git rev-parse upstream/main)
+          LOCAL_BASE=$(git merge-base HEAD upstream/main)
+          if [ "$UPSTREAM_REV" = "$LOCAL_BASE" ]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "Upstream is up to date, no new commits."
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "New commits detected in upstream."
+          fi
+
+      - name: Create Sync Branch and PR
+        if: steps.check.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH_NAME="upstream-sync-$(date +%Y%m%d)"
+          git checkout -b "$BRANCH_NAME"
+
+          if git merge upstream/main -m "chore(sync): sync upstream changes $(date +%Y-%m-%d)"; then
+            git push -u origin "$BRANCH_NAME"
+            gh pr create \
+              --title "chore: 同步上游更新 $(date +%Y-%m-%d)" \
+              --body "上游检测到新提交，已自动合并且无冲突。请审查测试后合并至 main 分支。" \
+              --base main \
+              --head "$BRANCH_NAME"
+          else
+            echo "Merge conflict detected."
+            git merge --abort
+            gh issue create \
+              --title "⚠️ 上游更新合并存在冲突 ($(date +%Y-%m-%d))" \
+              --body "检测到上游有新更新，但在自动合并到当前定制分支时产生冲突，请在本地手动拉取并解决冲突。"
+          fi
