@@ -14,7 +14,6 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   resolve_version:
@@ -27,6 +26,7 @@ jobs:
       is_main: ${{ steps.ver.outputs.is_main }}
       is_tag: ${{ steps.ver.outputs.is_tag }}
       git_tag: ${{ steps.ver.outputs.git_tag }}
+      image_name: ${{ steps.ver.outputs.image_name }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,6 +36,8 @@ jobs:
       - name: Compute version metadata
         id: ver
         run: |
+          # Docker 镜像名称必须全部小写
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           SHORT_SHA=$(git rev-parse --short HEAD)
           DATE=$(date +%Y%m%d)
           DATE_SHA="main-${DATE}-${SHORT_SHA}"
@@ -50,6 +52,7 @@ jobs:
             fi
           fi
 
+          echo "image_name=${REPO_LOWER}" >> "$GITHUB_OUTPUT"
           echo "Resolved version: ${VER}"
           echo "app_version=${VER}" >> "$GITHUB_OUTPUT"
           echo "date_sha=${DATE_SHA}" >> "$GITHUB_OUTPUT"
@@ -100,7 +103,7 @@ jobs:
           file: ./Dockerfile
           platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.resolve_version.outputs.short_sha }}-${{ matrix.arch }}
+          tags: ${{ env.REGISTRY }}/${{ needs.resolve_version.outputs.image_name }}:${{ needs.resolve_version.outputs.short_sha }}-${{ matrix.arch }}
           cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
 
@@ -121,7 +124,7 @@ jobs:
 
       - name: Assemble and push multi-arch manifests
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          IMAGE="${{ env.REGISTRY }}/${{ needs.resolve_version.outputs.image_name }}"
           TAG_PREFIX="${IMAGE}:${{ needs.resolve_version.outputs.short_sha }}"
           SOURCES="${TAG_PREFIX}-amd64 ${TAG_PREFIX}-arm64"
 
