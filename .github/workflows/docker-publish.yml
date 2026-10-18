@@ -14,22 +14,32 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-push:
-    name: Build & Push Docker Image
+  resolve_version:
+    name: Resolve version & tags
     runs-on: ubuntu-latest
+    outputs:
+      app_version: ${{ steps.ver.outputs.app_version }}
+      date_sha: ${{ steps.ver.outputs.date_sha }}
+      short_sha: ${{ steps.ver.outputs.short_sha }}
+      is_main: ${{ steps.ver.outputs.is_main }}
+      is_tag: ${{ steps.ver.outputs.is_tag }}
+      git_tag: ${{ steps.ver.outputs.git_tag }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          # 获取完整历史以正确识别最新 tag 和版本号
           fetch-depth: 0
 
-      - name: Resolve application version
-        id: version
+      - name: Compute version metadata
+        id: ver
         run: |
-          # 提取当前版本号并写入 VERSION 文件供 Docker 内前端/后端注入
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          DATE=$(date +%Y%m%d)
+          DATE_SHA="main-${DATE}-${SHORT_SHA}"
+
           VER=$(tr -d ' \n\r' < VERSION 2>/dev/null || true)
           if [ -z "$VER" ]; then
             if [[ "$GITHUB_REF" == refs/tags/* ]]; then
@@ -38,13 +48,40 @@ jobs:
               LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
               VER="${LATEST_TAG}-custom"
             fi
-            echo "$VER" > VERSION
           fi
+
           echo "Resolved version: ${VER}"
           echo "app_version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "date_sha=${DATE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "is_main=${{ github.ref == 'refs/heads/main' }}" >> "$GITHUB_OUTPUT"
+          echo "is_tag=${{ startsWith(github.ref, 'refs/tags/v') }}" >> "$GITHUB_OUTPUT"
+          echo "git_tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+  build_single_arch:
+    name: Build & push (${{ matrix.arch }})
+    needs: [resolve_version]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Write resolved VERSION
+        run: |
+          echo "${{ needs.resolve_version.outputs.app_version }}" > VERSION
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -56,38 +93,51 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata (Tags & Labels)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}
-          tags: |
-            # 1. 语义化 Git Tag 发布：自动生成主次版本标签 (v1.0.0, v1.0, v1)
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-
-            # 2. main 分支日常集成：不可变的 日期 + 短 SHA (例: main-20261019-de34103，方便锁定与快速回滚)
-            type=raw,value=main-{{date 'YYYYMMDD'}}-{{sha}},enable=${{ github.ref == 'refs/heads/main' }}
-
-            # 3. 关联应用内部版本 (例: v1.0.0-rc.45-custom)
-            type=raw,value=${{ steps.version.outputs.app_version }},enable=${{ github.ref == 'refs/heads/main' && steps.version.outputs.app_version != '' }}
-
-            # 4. 短 Git SHA (例: sha-de34103)
-            type=sha,format=short
-
-            # 5. 便捷 latest 别名 (仅在 push 到 main 或打 tag 时标记)
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-
-      - name: Build and push Docker image
+      - name: Build & push arch image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.resolve_version.outputs.short_sha }}-${{ matrix.arch }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+
+  create_manifest:
+    name: Create multi-arch manifest
+    needs: [resolve_version, build_single_arch]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Assemble and push multi-arch manifests
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          TAG_PREFIX="${IMAGE}:${{ needs.resolve_version.outputs.short_sha }}"
+          SOURCES="${TAG_PREFIX}-amd64 ${TAG_PREFIX}-arm64"
+
+          TARGET_TAGS=("-t" "${TAG_PREFIX}")
+
+          if [ "${{ needs.resolve_version.outputs.is_main }}" = "true" ]; then
+            TARGET_TAGS+=("-t" "${IMAGE}:latest")
+            TARGET_TAGS+=("-t" "${IMAGE}:${{ needs.resolve_version.outputs.date_sha }}")
+            TARGET_TAGS+=("-t" "${IMAGE}:${{ needs.resolve_version.outputs.app_version }}")
+          fi
+
+          if [ "${{ needs.resolve_version.outputs.is_tag }}" = "true" ]; then
+            TAG_VER="${{ needs.resolve_version.outputs.git_tag }}"
+            TARGET_TAGS+=("-t" "${IMAGE}:${TAG_VER}")
+            TARGET_TAGS+=("-t" "${IMAGE}:latest")
+          fi
+
+          echo "Creating manifest with tags: ${TARGET_TAGS[*]}"
+          docker buildx imagetools create "${TARGET_TAGS[@]}" ${SOURCES}
