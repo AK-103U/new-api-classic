@@ -75,7 +75,11 @@ func newPluginGenerationBuilder(staticRoutes []gin.RouteInfo, trustedProxies []s
 		engine.Handle(binding.Route.Method, binding.Route.Path, routeHandlers...)
 	}
 	builder.configure = func(engine *gin.Engine) error {
-		return common.ConfigureTrustedProxies(engine, builder.trustedProxies)
+		if err := common.ConfigureTrustedProxies(engine, builder.trustedProxies); err != nil {
+			return err
+		}
+		common.ConfigureTrustedPlatform(engine, common.ResolveTrustedPlatform(os.Getenv("TRUSTED_PLATFORM")))
+		return nil
 	}
 	return builder
 }

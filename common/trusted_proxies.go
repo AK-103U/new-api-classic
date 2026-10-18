@@ -46,9 +46,27 @@ func ResolveTrustedProxies(raw string) (trustedProxies []string, usedDefaults bo
 	return trustedProxies, false, nil
 }
 
+// ResolveTrustedPlatform returns the TRUSTED_PLATFORM env value (e.g.
+// "CF-Connecting-IP") after trimming whitespace. An empty string means the
+// feature is disabled and Gin falls back to X-Forwarded-For / X-Real-Ip
+// parsing via TrustedProxies.
+func ResolveTrustedPlatform(raw string) string {
+	return strings.TrimSpace(raw)
+}
+
 func ConfigureTrustedProxies(engine *gin.Engine, trustedProxies []string) error {
 	if err := engine.SetTrustedProxies(trustedProxies); err != nil {
 		return fmt.Errorf("invalid TRUSTED_PROXIES: %w", err)
 	}
 	return nil
+}
+
+// ConfigureTrustedPlatform sets engine.TrustedPlatform when a non-empty
+// platform header is provided. When deploying behind Cloudflare set
+// TRUSTED_PLATFORM=CF-Connecting-IP so that c.ClientIP() reads the real
+// client IP directly from that header instead of parsing X-Forwarded-For.
+func ConfigureTrustedPlatform(engine *gin.Engine, platform string) {
+	if platform != "" {
+		engine.TrustedPlatform = platform
+	}
 }

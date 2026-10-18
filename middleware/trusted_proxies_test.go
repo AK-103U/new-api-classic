@@ -125,3 +125,28 @@ func TestConfigureTrustedProxiesRejectsInvalidConfiguration(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigureTrustedPlatformCloudflare(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("TRUSTED_PROXIES", "127.0.0.1")
+	t.Setenv("TRUSTED_PLATFORM", "CF-Connecting-IP")
+
+	router := gin.New()
+	require.NoError(t, ConfigureTrustedProxies(router))
+
+	var clientIP string
+	router.GET("/ip", func(c *gin.Context) {
+		clientIP = c.ClientIP()
+		c.Status(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/ip", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	req.Header.Set("CF-Connecting-IP", "198.51.100.88")
+	req.Header.Set("X-Forwarded-For", "203.0.113.1")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, "198.51.100.88", clientIP, "c.ClientIP() should use CF-Connecting-IP when TRUSTED_PLATFORM is set")
+}
