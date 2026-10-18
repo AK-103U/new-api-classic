@@ -109,7 +109,7 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         cell: ({ row }) => (
           <span className='font-medium'>{row.getValue('name')}</span>
         ),
-        size: 180,
+        size: 140,
         meta: { mobileTitle: true },
       },
       {
@@ -129,7 +129,7 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
           )
         },
         filterFn: (row, id, value) => value.includes(String(row.getValue(id))),
-        size: 120,
+        size: 90,
         meta: { mobileBadge: true },
       },
       {
@@ -138,15 +138,14 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         header: t('API Key'),
         cell: ({ row }) => <ApiKeyCell apiKey={row.original} />,
         enableSorting: false,
-        size: 260,
+        size: 180,
       },
       {
         id: 'quota',
         accessorKey: 'remain_quota',
         header: `${t('Quota')} (${quotaUnit})`,
         cell: ({ row }) => <ApiKeyQuotaCell apiKey={row.original} now={now} />,
-        size: 260,
-        minSize: 260,
+        size: 170,
       },
       {
         accessorKey: 'group',
@@ -163,7 +162,7 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
             />
           )
         },
-        size: 220,
+        size: 130,
         meta: { mobileHidden: true },
       },
       {
@@ -172,7 +171,7 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         header: t('Models'),
         cell: ({ row }) => <ModelLimitsCell apiKey={row.original} />,
         enableSorting: false,
-        size: 160,
+        size: 110,
         meta: { mobileHidden: true },
       },
       {
@@ -181,7 +180,7 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         header: t('IP Restriction'),
         cell: ({ row }) => <IpRestrictionsCell apiKey={row.original} />,
         enableSorting: false,
-        size: 160,
+        size: 110,
         meta: { mobileHidden: true },
       },
       {
@@ -191,7 +190,7 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         cell: ({ row }) => (
           <ApiKeyActivityCell apiKey={row.original} now={now} />
         ),
-        size: 220,
+        size: 160,
         meta: { mobileHidden: true },
       },
       {
@@ -223,7 +222,7 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
             />
           )
         },
-        size: 180,
+        size: 130,
         meta: { mobileHidden: true },
       },
       {
