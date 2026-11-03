@@ -21,45 +21,22 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       app_version: ${{ steps.ver.outputs.app_version }}
+      revision: ${{ steps.ver.outputs.revision }}
       date_sha: ${{ steps.ver.outputs.date_sha }}
       short_sha: ${{ steps.ver.outputs.short_sha }}
       is_main: ${{ steps.ver.outputs.is_main }}
       is_tag: ${{ steps.ver.outputs.is_tag }}
-      git_tag: ${{ steps.ver.outputs.git_tag }}
       image_name: ${{ steps.ver.outputs.image_name }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Compute version metadata
         id: ver
-        run: |
-          # Docker 镜像名称必须全部小写
-          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          DATE=$(date +%Y%m%d)
-          DATE_SHA="main-${DATE}-${SHORT_SHA}"
-
-          VER=$(tr -d ' \n\r' < VERSION 2>/dev/null || true)
-          if [ -z "$VER" ]; then
-            if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-              VER="${GITHUB_REF#refs/tags/}"
-            else
-              LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-              VER="${LATEST_TAG}-custom"
-            fi
-          fi
-
-          echo "image_name=${REPO_LOWER}" >> "$GITHUB_OUTPUT"
-          echo "Resolved version: ${VER}"
-          echo "app_version=${VER}" >> "$GITHUB_OUTPUT"
-          echo "date_sha=${DATE_SHA}" >> "$GITHUB_OUTPUT"
-          echo "short_sha=sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "is_main=${{ github.ref == 'refs/heads/main' }}" >> "$GITHUB_OUTPUT"
-          echo "is_tag=${{ startsWith(github.ref, 'refs/tags/v') }}" >> "$GITHUB_OUTPUT"
-          echo "git_tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+        run: python3 .github/scripts/docker_version.py
 
   build_single_arch:
     name: Build & push (${{ matrix.arch }})
@@ -80,11 +57,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Write resolved VERSION
-        run: |
-          echo "${{ needs.resolve_version.outputs.app_version }}" > VERSION
+        env:
+          APP_VERSION: ${{ needs.resolve_version.outputs.app_version }}
+        run: printf '%s\n' "$APP_VERSION" > VERSION
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -103,7 +82,14 @@ jobs:
           file: ./Dockerfile
           platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ env.REGISTRY }}/${{ needs.resolve_version.outputs.image_name }}:${{ needs.resolve_version.outputs.short_sha }}-${{ matrix.arch }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ needs.resolve_version.outputs.image_name }}:${{ needs.resolve_version.outputs.app_version }}-${{ matrix.arch }}
+            ${{ env.REGISTRY }}/${{ needs.resolve_version.outputs.image_name }}:${{ needs.resolve_version.outputs.short_sha }}-${{ matrix.arch }}
+            ${{ env.REGISTRY }}/${{ needs.resolve_version.outputs.image_name }}:build-${{ github.run_id }}-${{ matrix.arch }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.resolve_version.outputs.app_version }}
+            org.opencontainers.image.revision=${{ needs.resolve_version.outputs.revision }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
 
@@ -123,24 +109,26 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Assemble and push multi-arch manifests
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ needs.resolve_version.outputs.image_name }}
+          APP_VERSION: ${{ needs.resolve_version.outputs.app_version }}
+          SHORT_SHA: ${{ needs.resolve_version.outputs.short_sha }}
+          DATE_SHA: ${{ needs.resolve_version.outputs.date_sha }}
+          IS_MAIN: ${{ needs.resolve_version.outputs.is_main }}
+          IS_TAG: ${{ needs.resolve_version.outputs.is_tag }}
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ needs.resolve_version.outputs.image_name }}"
-          TAG_PREFIX="${IMAGE}:${{ needs.resolve_version.outputs.short_sha }}"
-          SOURCES="${TAG_PREFIX}-amd64 ${TAG_PREFIX}-arm64"
-
-          TARGET_TAGS=("-t" "${TAG_PREFIX}")
-
-          if [ "${{ needs.resolve_version.outputs.is_main }}" = "true" ]; then
-            TARGET_TAGS+=("-t" "${IMAGE}:latest")
-            TARGET_TAGS+=("-t" "${IMAGE}:${{ needs.resolve_version.outputs.date_sha }}")
-            TARGET_TAGS+=("-t" "${IMAGE}:${{ needs.resolve_version.outputs.app_version }}")
+          TARGET_TAGS=("-t" "${IMAGE}:${APP_VERSION}" "-t" "${IMAGE}:${SHORT_SHA}")
+          if [ "$IS_MAIN" = "true" ]; then
+            TARGET_TAGS+=("-t" "${IMAGE}:${DATE_SHA}")
           fi
-
-          if [ "${{ needs.resolve_version.outputs.is_tag }}" = "true" ]; then
-            TAG_VER="${{ needs.resolve_version.outputs.git_tag }}"
-            TARGET_TAGS+=("-t" "${IMAGE}:${TAG_VER}")
+          if [ "$IS_MAIN" = "true" ] || [ "$IS_TAG" = "true" ]; then
             TARGET_TAGS+=("-t" "${IMAGE}:latest")
           fi
 
+          # Isolate concurrent main/tag builds of the same source commit.
+          # Keep the run ID across attempts so retrying only a failed
+          # architecture can reuse the successful architecture in this run.
+          BUILD_PREFIX="${IMAGE}:build-${GITHUB_RUN_ID}"
           echo "Creating manifest with tags: ${TARGET_TAGS[*]}"
-          docker buildx imagetools create "${TARGET_TAGS[@]}" ${SOURCES}
+          docker buildx imagetools create "${TARGET_TAGS[@]}" \
+            "${BUILD_PREFIX}-amd64" "${BUILD_PREFIX}-arm64"

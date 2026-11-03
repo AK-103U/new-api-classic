@@ -53,6 +53,12 @@ export default defineConfig(({ envMode }) => {
       },
     },
     source: {
+      // Only publish the build version, never the full process environment.
+      define: {
+        'import.meta.env.VITE_REACT_APP_VERSION': JSON.stringify(
+          env.rawPublicVars.VITE_REACT_APP_VERSION ?? ''
+        ),
+      },
       entry: {
         index: './src/main.tsx',
       },

@@ -13,6 +13,7 @@ import unittest
 
 
 CONTROLLER = Path(__file__).resolve().parents[1] / "scripts" / "upstream_sync.py"
+VERSION_RESOLVER = CONTROLLER.with_name("docker_version.py")
 
 
 class UpstreamSyncTests(unittest.TestCase):
@@ -263,6 +264,145 @@ class UpstreamSyncTests(unittest.TestCase):
         self.run_command("git", "push", "upstream", "main", cwd=self.seed)
         self.assertEqual(self.controller("prepare").returncode, 0)
         self.assertEqual(len(self.state()["commits"].splitlines()), 35)
+
+    def resolve_image_version(self, ref="refs/heads/main", **environment):
+        Path(self.env["GITHUB_OUTPUT"]).unlink(missing_ok=True)
+        revision = self.run_command("git", "rev-parse", "HEAD", cwd=self.runner).stdout.strip()
+        return self.run_command(
+            sys.executable, str(VERSION_RESOLVER), cwd=self.runner, check=False,
+            **{"GITHUB_REF": ref, "GITHUB_SHA": revision, **environment},
+        )
+
+    def image_metadata(self):
+        return dict(
+            line.split("=", 1)
+            for line in Path(self.env["GITHUB_OUTPUT"]).read_text().splitlines()
+        )
+
+    def publish_upstream_tag(self, tag, annotated=False):
+        args = ["git", "tag", tag]
+        if annotated:
+            args += ["-a", "-m", tag]
+        self.run_command(*args, cwd=self.seed)
+        self.run_command("git", "push", "upstream", f"refs/tags/{tag}", cwd=self.seed)
+
+    def test_docker_version_uses_upstream_tags_without_replacing_local_tags(self):
+        self.publish_upstream_tag("v1.0.0-rc.47", annotated=True)
+        upstream_revision = self.run_command("git", "rev-parse", "HEAD", cwd=self.seed).stdout.strip()
+        self.commit(self.runner, "VERSION", "v1.0.0-rc.45-custom\n", "stale version")
+        revision = self.run_command("git", "rev-parse", "HEAD", cwd=self.runner).stdout.strip()
+        # Neither the stale fork tag nor an identically named local tag may win.
+        for tag in ("v1.0.0-rc.45", "v1.0.0-rc.47", "v99.0.0"):
+            self.run_command("git", "tag", tag, cwd=self.runner)
+        before = self.run_command("git", "show-ref", "--tags", cwd=self.runner).stdout
+        result = self.resolve_image_version(GITHUB_REPOSITORY="Fixture-Owner/Custom-Gateway")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        metadata = self.image_metadata()
+        self.assertEqual(metadata["app_version"], f"v1.0.0-rc.47-classic-{revision[:12]}")
+        self.assertEqual(metadata["upstream_version"], "v1.0.0-rc.47")
+        self.assertEqual(metadata["upstream_revision"], upstream_revision)
+        self.assertEqual(metadata["revision"], revision)
+        self.assertEqual(metadata["short_sha"], f"sha-{revision[:12]}")
+        self.assertEqual(metadata["image_name"], "fixture-owner/custom-gateway")
+        self.assertEqual((metadata["is_main"], metadata["is_tag"]), ("true", "false"))
+        self.assertEqual(self.run_command("git", "show-ref", "--tags", cwd=self.runner).stdout, before)
+        self.assertEqual((self.runner / "VERSION").read_text(), "v1.0.0-rc.45-custom\n")
+        self.assertIn(metadata["app_version"], self.summary())
+        self.assertEqual(self.calls(), [])
+
+    def test_docker_version_ignores_unmerged_releases_and_submodule_tags(self):
+        self.publish_upstream_tag("v1.0.0-rc.47")
+        self.publish_upstream_tag("relaykit/v99.0.0")
+        self.publish_upstream_tag("tokenkit/v99.0.0")
+        self.publish_upstream_tag("v1.0.0-rc.19-i18nfix.2")
+        self.publish_upstream_tag("v99.0.0-preview.1")
+        revision = self.run_command("git", "rev-parse", "HEAD", cwd=self.runner).stdout.strip()
+        self.add_upstream_change()
+        self.publish_upstream_tag("v2.0.0")
+        result = self.resolve_image_version()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.image_metadata()["app_version"], f"v1.0.0-rc.47-classic-{revision[:12]}")
+        self.assertEqual(self.run_command("git", "rev-parse", "HEAD", cwd=self.runner).stdout.strip(), revision)
+        self.assertFalse((self.runner / "upstream.txt").exists())
+        self.assertEqual(self.run_command("git", "tag", "--list", cwd=self.runner).stdout, "")
+
+    def test_docker_version_orders_numeric_prereleases_and_final_releases(self):
+        for new_tags, expected in [
+            (["v1.0.0-rc.9", "v1.0.0-rc.10", "v1.0.0-alpha.99", "v1.0.0-rc.099"], "v1.0.0-rc.10"),
+            (["v1.0.0"], "v1.0.0"),
+            (["v1.0.9", "v1.0.10", "v1.0.10-rc.1"], "v1.0.10"),
+            (["v1.0.10-patch.1"], "v1.0.10-patch.1"),
+        ]:
+            with self.subTest(expected=expected):
+                for tag in new_tags:
+                    self.publish_upstream_tag(tag)
+                result = self.resolve_image_version()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.image_metadata()["upstream_version"], expected)
+
+    def test_docker_tag_release_overrides_version_file_without_fetching_upstream(self):
+        self.commit(self.runner, "VERSION", "v0.0.1-stale\n", "stale version")
+        self.run_command("git", "tag", "v1.0.0-classic.2", cwd=self.runner)
+        self.upstream.rename(self.root / "offline-upstream.git")
+        result = self.resolve_image_version("refs/tags/v1.0.0-classic.2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        metadata = self.image_metadata()
+        self.assertEqual(metadata["app_version"], "v1.0.0-classic.2")
+        self.assertEqual(metadata["upstream_version"], "")
+        self.assertEqual((metadata["is_main"], metadata["is_tag"]), ("false", "true"))
+
+    def test_docker_invalid_release_tags_fail_before_build_metadata_is_written(self):
+        for tag in ("v1.0.0+metadata", "v" + "1" * 125):
+            with self.subTest(tag=tag):
+                result = self.resolve_image_version(f"refs/tags/{tag}")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("not a valid Docker image tag", result.stderr)
+                self.assertFalse(Path(self.env["GITHUB_OUTPUT"]).exists())
+
+    def test_docker_version_never_falls_back_to_old_local_or_cached_tags(self):
+        self.run_command("git", "tag", "v1.0.0", cwd=self.runner)
+        result = self.resolve_image_version()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("No merged upstream release tag", result.stderr)
+        self.assertFalse(Path(self.env["GITHUB_OUTPUT"]).exists())
+        self.publish_upstream_tag("v1.0.0")
+        self.assertEqual(self.resolve_image_version().returncode, 0)
+        self.upstream.rename(self.root / "offline-upstream.git")
+        result = self.resolve_image_version()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(Path(self.env["GITHUB_OUTPUT"]).exists())
+
+    def test_docker_version_prunes_deleted_upstream_tags_but_keeps_fork_tags(self):
+        for tag in ("v1.0.0", "v1.1.0"):
+            self.publish_upstream_tag(tag)
+        self.assertEqual(self.resolve_image_version().returncode, 0)
+        self.assertEqual(self.image_metadata()["upstream_version"], "v1.1.0")
+        self.run_command("git", "push", "upstream", ":refs/tags/v1.1.0", cwd=self.seed)
+        self.run_command("git", "tag", "v1.1.0", cwd=self.runner)
+        self.assertEqual(self.resolve_image_version().returncode, 0)
+        self.assertEqual(self.image_metadata()["upstream_version"], "v1.0.0")
+        self.assertEqual(self.run_command("git", "tag", "--list", cwd=self.runner).stdout.strip(), "v1.1.0")
+
+    def test_docker_version_rejects_wrong_or_shallow_checkouts(self):
+        result = self.resolve_image_version(GITHUB_SHA="0" * 40)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not match the workflow commit", result.stderr)
+        shallow = self.root / "shallow"
+        self.run_command("git", "clone", "--depth=1", self.origin.as_uri(), str(shallow))
+        self.runner = shallow
+        result = self.resolve_image_version()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("fetch-depth: 0", result.stderr)
+        self.assertFalse(Path(self.env["GITHUB_OUTPUT"]).exists())
+
+    def test_docker_manual_branch_build_is_marked_as_non_release(self):
+        self.publish_upstream_tag("v1.0.0")
+        self.run_command("git", "checkout", "-b", "version-preview", cwd=self.runner)
+        result = self.resolve_image_version("refs/heads/version-preview")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        metadata = self.image_metadata()
+        self.assertEqual((metadata["is_main"], metadata["is_tag"]), ("false", "false"))
+        self.assertTrue(metadata["app_version"].startswith("v1.0.0-classic-"))
 
 
 if __name__ == "__main__":
