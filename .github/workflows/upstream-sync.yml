@@ -13,160 +13,95 @@ permissions:
 
 concurrency:
   group: upstream-sync
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   check-and-sync:
     name: Check & Sync Upstream
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_REPO: ${{ github.repository }}
+      GOWORK: 'off'
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout workflow revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      # Keep notification code from this workflow revision, not from the
+      # candidate merge. A manual dispatch still synchronizes origin/main.
+      - name: Preserve sync controller
+        id: controller
+        run: |
+          mkdir -p "$RUNNER_TEMP/upstream-sync"
+          cp .github/scripts/upstream_sync.py "$RUNNER_TEMP/upstream-sync/controller.py"
+
+      - name: Fetch and merge upstream
+        id: prepare
+        run: python3 "$RUNNER_TEMP/upstream-sync/controller.py" prepare
+
+      - name: Set up Go from merged module
+        id: setup_go
+        if: steps.prepare.outputs.merge_status == 'merged'
+        continue-on-error: true
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: 'stable'
-          check-latest: true
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            relaykit/go.sum
+            tokenkit/go.sum
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Set up Bun from merged package
+        id: setup_bun
+        if: steps.prepare.outputs.merge_status == 'merged'
+        continue-on-error: true
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: latest
+          bun-version-file: web/package.json
 
-      - name: Configure Git
+      - name: Build Go modules independently
+        id: backend
+        if: steps.prepare.outputs.merge_status == 'merged' && steps.setup_go.outcome == 'success'
+        continue-on-error: true
+        run: python3 "$RUNNER_TEMP/upstream-sync/controller.py" build-backend
+
+      - name: Install frontend and check types
+        id: frontend
+        if: steps.prepare.outputs.merge_status == 'merged' && steps.setup_bun.outcome == 'success'
+        continue-on-error: true
+        working-directory: web
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git remote add upstream https://github.com/QuantumNous/new-api.git || true
-          git fetch upstream main
+          bun install --frozen-lockfile
+          bun run typecheck
 
-      - name: Check for new upstream commits
-        id: check
+      - name: Publish synchronization branch
+        id: push
+        if: steps.prepare.outputs.merge_status == 'merged'
+        continue-on-error: true
+        env:
+          PREVIOUS_REV: ${{ steps.prepare.outputs.previous_rev }}
+          MERGED_REV: ${{ steps.prepare.outputs.merged_rev }}
         run: |
-          UPSTREAM_REV=$(git rev-parse upstream/main)
-          LOCAL_BASE=$(git merge-base HEAD upstream/main)
-          if [ "$UPSTREAM_REV" = "$LOCAL_BASE" ]; then
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
-            echo "Upstream is up to date, no new commits."
-          else
-            echo "has_changes=true" >> "$GITHUB_OUTPUT"
-            echo "upstream_rev=$UPSTREAM_REV" >> "$GITHUB_OUTPUT"
-            echo "local_base=$LOCAL_BASE" >> "$GITHUB_OUTPUT"
+          # Do not overwrite a branch someone updated while the checks ran.
+          git push --force-with-lease="refs/heads/upstream-sync:$PREVIOUS_REV" \
+            origin "$MERGED_REV:refs/heads/upstream-sync"
 
-            # 导出上游提交列表与统计到临时文件供后续使用
-            git log --oneline --no-merges "${LOCAL_BASE}..upstream/main" | head -n 35 > upstream_commits.txt
-            git diff --stat "${LOCAL_BASE}..upstream/main" | tail -n 1 > upstream_stats.txt
-          fi
-
-      - name: Perform Merge & Pre-flight Build Check
-        if: steps.check.outputs.has_changes == 'true'
-        id: merge
-        run: |
-          BRANCH="upstream-sync"
-          git checkout -B "$BRANCH" HEAD
-
-          # 1. 尝试合入上游代码
-          if ! git merge upstream/main -m "chore(sync): sync upstream changes ($(date +%Y-%m-%d))"; then
-            echo "conflict=true" >> "$GITHUB_OUTPUT"
-            git merge --abort
-            exit 0
-          fi
-          echo "conflict=false" >> "$GITHUB_OUTPUT"
-
-          # 2. 预检: 后端 Go 编译
-          BUILD_STATUS="success"
-          BUILD_ERR=""
-          if ! go build ./...; then
-            BUILD_STATUS="failed"
-            BUILD_ERR="后端 Go 编译失败，可能存在类型或包引用变更"
-          fi
-
-          # 3. 预检: 前端 TypeScript 类型检查
-          if [ "$BUILD_STATUS" = "success" ]; then
-            if ! (cd web && bun install --frozen-lockfile && bun run typecheck); then
-              BUILD_STATUS="failed"
-              BUILD_ERR="前端 TypeScript 类型检查失败"
-            fi
-          fi
-
-          echo "build_status=$BUILD_STATUS" >> "$GITHUB_OUTPUT"
-          echo "build_err=$BUILD_ERR" >> "$GITHUB_OUTPUT"
-
-          # 4. 推送到固定的单一分支 (强制推送刷新)
-          git push -f origin "$BRANCH"
-
-      - name: Handle PR or Conflict Issue
-        if: steps.check.outputs.has_changes == 'true'
+      # continue-on-error above lets failed candidates get a diagnostic PR.
+      # The controller reads outcome (not conclusion) and fails this final
+      # step for conflicts, failed/skipped checks, push or notification errors.
+      - name: Report synchronization result
+        if: ${{ !cancelled() && steps.controller.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          BRANCH="upstream-sync"
-
-          if [ "${{ steps.merge.outputs.conflict }}" = "true" ]; then
-            python3 -c '
-          import os
-          commits = open("upstream_commits.txt").read() if os.path.exists("upstream_commits.txt") else ""
-          body = f"""## ⚠️ 上游更新合并存在冲突
-
-          检测到上游有新提交，但在自动合并到当前定制分支时产生冲突。请在本地手动拉取并解决冲突。
-
-          ### 📝 上游更新提交清单
-          ```text
-          {commits}
-          ```
-          """
-          with open("conflict_body.md", "w") as f:
-              f.write(body)
-          '
-            EXISTING_ISSUE=$(gh issue list --search "⚠️ 上游更新合并存在冲突" --state open --json number -q '.[0].number')
-            if [ -n "$EXISTING_ISSUE" ]; then
-              gh issue comment "$EXISTING_ISSUE" --body-file conflict_body.md
-              echo "已更新冲突 Issue #${EXISTING_ISSUE}"
-            else
-              gh issue create --title "⚠️ 上游更新合并存在冲突 ($(date +%Y-%m-%d))" --body-file conflict_body.md
-            fi
-            exit 0
-          fi
-
-          PR_TITLE="chore(sync): 同步上游更新 $(date +%Y-%m-%d)"
-          if [ "${{ steps.merge.outputs.build_status }}" = "failed" ]; then
-            PR_TITLE="⚠️ [构建未通过] 同步上游更新 $(date +%Y-%m-%d)"
-          fi
-
-          python3 -c '
-          import os
-          stats = open("upstream_stats.txt").read().strip() if os.path.exists("upstream_stats.txt") else ""
-          commits = open("upstream_commits.txt").read() if os.path.exists("upstream_commits.txt") else ""
-          status = "${{ steps.merge.outputs.build_status }}"
-          err = "${{ steps.merge.outputs.build_err }}"
-
-          check_msg = "✅ **后端编译与前端类型检查全部通过**" if status == "success" else f"❌ **构建预检失败**：{err}"
-
-          body = f"""## 🔄 上游更新自动合并报告
-
-          **上游改动概览：**
-          - 统计：`{stats}`
-          - 构建预检：{check_msg}
-
-          ### 📝 上游提交清单
-          ```text
-          {commits}
-          ```
-
-          > 本 PR 由 GitHub Actions 自动化流水线维护；当上游有新更新时会自动刷新此分支与 PR 内容。
-          """
-          with open("pr_body.md", "w") as f:
-              f.write(body)
-          '
-
-          EXISTING_PR=$(gh pr list --head "$BRANCH" --base main --state open --json number -q '.[0].number')
-          if [ -n "$EXISTING_PR" ]; then
-            gh pr edit "$EXISTING_PR" --title "$PR_TITLE" --body-file pr_body.md
-            echo "已更新现存 PR #${EXISTING_PR}"
-          else
-            gh pr create --title "$PR_TITLE" --body-file pr_body.md --base main --head "$BRANCH"
-          fi
+          GO_SETUP_OUTCOME: ${{ steps.setup_go.outcome }}
+          BUN_SETUP_OUTCOME: ${{ steps.setup_bun.outcome }}
+          BACKEND_OUTCOME: ${{ steps.backend.outcome }}
+          FRONTEND_OUTCOME: ${{ steps.frontend.outcome }}
+          PUSH_OUTCOME: ${{ steps.push.outcome }}
+        run: python3 "$RUNNER_TEMP/upstream-sync/controller.py" report
