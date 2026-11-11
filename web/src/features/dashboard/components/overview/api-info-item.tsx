@@ -44,92 +44,84 @@ export function ApiInfoItemComponent(props: ApiInfoItemProps) {
   const status = props.status
 
   return (
-    <div className='group hover:bg-muted/40 flex items-start gap-2.5 px-3 py-2.5 transition-colors sm:gap-3 sm:px-5 sm:py-3'>
+    <div className='group hover:bg-muted/40 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-1 px-3 py-2.5 transition-colors sm:gap-x-3 sm:px-5 sm:py-3'>
       <span
         className={cn(
-          'mt-1.5 inline-block size-2 shrink-0 rounded-full',
+          'inline-block size-2 shrink-0 rounded-full',
           getBgColorClass(item.color)
         )}
       />
 
-      <div className='min-w-0 flex-1'>
-        <div className='mb-1 flex w-full flex-wrap items-center justify-between gap-2'>
-          <span className='text-foreground text-sm font-bold break-all'>
-            {item.route}
-          </span>
+      <div className='flex min-w-0 flex-wrap items-center justify-between gap-2'>
+        <span className='text-foreground text-sm font-bold break-all'>
+          {item.route}
+        </span>
 
-          <div className='flex shrink-0 items-center gap-1'>
-            {status.testing && (
-              <StatusBadge
-                label={t('Testing...')}
-                variant='warning'
-                className='animate-pulse'
-                copyable={false}
+        <div className='flex shrink-0 items-center gap-1'>
+          {status.testing && (
+            <StatusBadge
+              label={t('Testing...')}
+              variant='warning'
+              className='animate-pulse'
+              copyable={false}
+            />
+          )}
+          {status.latency !== null && !status.testing && (
+            <StatusBadge
+              variant='success'
+              label={`${status.latency}${t('ms')}`}
+              className={cn(
+                'font-mono font-medium',
+                getLatencyColorClass(status.latency)
+              )}
+              copyable={false}
+            />
+          )}
+          {status.error && (
+            <StatusBadge label={t('N/A')} variant='neutral' copyable={false} />
+          )}
+
+          <div className='flex items-center gap-0.5'>
+            <Button
+              variant='ghost'
+              size='sm'
+              onClick={() => props.onTest(item.url)}
+              disabled={status.testing}
+              className='size-7 p-0'
+              title={t('Test Latency')}
+            >
+              <Zap
+                className={cn('size-3.5', status.testing && 'animate-pulse')}
               />
-            )}
-            {status.latency !== null && !status.testing && (
-              <StatusBadge
-                variant='success'
-                label={`${status.latency}${t('ms')}`}
-                className={cn(
-                  'font-mono font-medium',
-                  getLatencyColorClass(status.latency)
-                )}
-                copyable={false}
-              />
-            )}
-            {status.error && (
-              <StatusBadge
-                label={t('N/A')}
-                variant='neutral'
-                copyable={false}
-              />
-            )}
+            </Button>
 
-            <div className='flex items-center gap-0.5'>
-              <Button
-                variant='ghost'
-                size='sm'
-                onClick={() => props.onTest(item.url)}
-                disabled={status.testing}
-                className='size-7 p-0'
-                title={t('Test Latency')}
-              >
-                <Zap
-                  className={cn('size-3.5', status.testing && 'animate-pulse')}
-                />
-              </Button>
+            <Button
+              variant='ghost'
+              size='sm'
+              onClick={() => openExternalSpeedTest(item.url)}
+              className='size-7 p-0'
+              title={t('External Speed Test')}
+            >
+              <Gauge className='size-3.5' />
+            </Button>
 
-              <Button
-                variant='ghost'
-                size='sm'
-                onClick={() => openExternalSpeedTest(item.url)}
-                className='size-7 p-0'
-                title={t('External Speed Test')}
-              >
-                <Gauge className='size-3.5' />
-              </Button>
-
-              <Button
-                variant='ghost'
-                size='sm'
-                className='size-7 p-0'
-                title={t('Open in New Tab')}
-                render={
-                  <a
-                    href={item.url}
-                    target='_blank'
-                    rel='noopener noreferrer'
-                  />
-                }
-              >
-                <ExternalLink className='size-3.5' />
-              </Button>
-            </div>
+            <Button
+              variant='ghost'
+              size='sm'
+              className='size-7 p-0'
+              title={t('Open in New Tab')}
+              render={
+                <a href={item.url} target='_blank' rel='noopener noreferrer' />
+              }
+            >
+              <ExternalLink className='size-3.5' />
+            </Button>
           </div>
         </div>
+      </div>
 
-        <div className='mb-1 flex items-center gap-1'>
+      <div className='col-start-2 flex min-w-0 flex-col gap-1'>
+        <div className='flex items-center gap-1'>
           <button
             type='button'
             onClick={() => void copyToClipboard(item.url)}
