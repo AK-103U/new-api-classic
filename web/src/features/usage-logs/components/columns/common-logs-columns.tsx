@@ -341,38 +341,10 @@ function buildTypeDetailSegments(
   return segments
 }
 
-function getEffectiveGroupRatio(other: LogOtherData | null): number {
-  const userGroupRatio = other?.user_group_ratio
-  if (
-    userGroupRatio != null &&
-    userGroupRatio !== -1 &&
-    Number.isFinite(userGroupRatio)
-  ) {
-    return userGroupRatio
-  }
-
-  const groupRatio = other?.group_ratio
-  if (groupRatio != null && Number.isFinite(groupRatio)) {
-    return groupRatio
-  }
-
-  return 1
-}
-
-function formatGroupRatio(ratio: number): string {
-  return ratio % 1 === 0
-    ? `${ratio}x`
-    : `${ratio.toFixed(4).replace(/\.?0+$/, '')}x`
-}
-
 /**
  * Classic Semi UI pill tag for Log Type
  */
-function renderClassicTypeTag(
-  type: number,
-  other: LogOtherData | null,
-  t: (k: string) => string
-) {
+function renderClassicTypeTag(type: number, t: (k: string) => string) {
   switch (type) {
     case 1:
       return (
@@ -380,15 +352,12 @@ function renderClassicTypeTag(
           {t('Top-up')}
         </span>
       )
-    case 2: {
-      const ratio = getEffectiveGroupRatio(other)
-      const ratioStr = formatGroupRatio(ratio)
+    case 2:
       return (
         <span className='inline-flex items-center justify-center rounded-full bg-lime-100/70 px-2.5 py-0.5 text-xs font-normal whitespace-nowrap text-lime-800 shadow-2xs dark:bg-lime-950/40 dark:text-lime-300'>
-          {t('Consume')} {ratioStr}
+          {t('Consume')}
         </span>
       )
-    }
     case 3:
       return (
         <span className='inline-flex items-center justify-center rounded-full bg-orange-50 px-2 py-0.5 text-xs font-normal text-orange-700 shadow-2xs dark:bg-orange-950/40 dark:text-orange-300'>
@@ -463,33 +432,36 @@ function renderClassicTimingCell(
   const frtSec = frtMs != null && frtMs > 0 ? (frtMs / 1000).toFixed(1) : null
   const frtColor = frtSec != null ? getFrtBadgeColor(Number(frtSec)) : ''
 
+  // Keep both lines within the existing row height and cell padding.
   return (
-    <div className='flex items-center gap-1 font-mono text-xs whitespace-nowrap'>
-      <span
-        className={cn(
-          'rounded-full px-1.5 py-0.5 font-medium shadow-2xs',
-          timeColor
+    <div className='flex h-7.5 items-center gap-1 font-mono text-xs whitespace-nowrap'>
+      <div className='flex flex-col items-start justify-center'>
+        {isStream && frtSec && (
+          <span
+            className={cn(
+              'rounded-full px-1.5 leading-[15px] font-medium shadow-2xs',
+              frtColor
+            )}
+          >
+            {frtSec} s
+          </span>
         )}
-      >
-        {time} s
-      </span>
-      {isStream && frtSec && (
         <span
           className={cn(
-            'rounded-full px-1.5 py-0.5 font-medium shadow-2xs',
-            frtColor
+            'rounded-full px-1.5 leading-[15px] font-medium shadow-2xs',
+            timeColor
           )}
         >
-          {frtSec} s
+          {time} s
         </span>
-      )}
+      </div>
       <StreamTpsCell
         compact
         isStream={isStream}
         tokensPerSecond={tokensPerSecond}
         streamStatus={streamStatus}
         className={cn(
-          'rounded-full px-1.5 py-0.5 shadow-2xs',
+          'flex-col flex-nowrap items-start gap-0 rounded-full px-1.5 py-0 leading-[15px] shadow-2xs [&>span]:px-0',
           isStream
             ? 'bg-blue-50 dark:bg-blue-950/40'
             : 'bg-purple-50 dark:bg-purple-950/40'
@@ -919,7 +891,7 @@ export function useCommonLogsColumns(
               data-slot='log-type-prefix'
               className='hidden shrink-0 min-[641px]:inline-flex'
             >
-              {renderClassicTypeTag(log.type, other, t)}
+              {renderClassicTypeTag(log.type, t)}
             </span>
             <Button
               type='button'

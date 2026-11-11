@@ -138,7 +138,7 @@ test('combines tokens and removes the standalone type and output columns', () =>
 })
 
 test.each([
-  { type: 2, label: 'Consume 2x' },
+  { type: 2, label: 'Consume' },
   { type: 1, label: 'Top-up' },
   { type: 5, label: 'Error' },
   { type: 6, label: 'Refund' },
@@ -158,6 +158,29 @@ test.each([
       prefix.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING
     ).not.toBe(0)
     expect(button).not.toHaveTextContent(label)
+  }
+)
+
+test.each([
+  {
+    name: 'group ratio',
+    other: { group_ratio: 0.12 },
+    summary: 'Group Ratio 0.12x',
+  },
+  {
+    name: 'user-exclusive ratio',
+    other: { group_ratio: 2, user_group_ratio: 0.12 },
+    summary: 'User Exclusive Ratio 0.12x',
+  },
+  { name: 'missing ratio', other: {}, summary: 'Example details' },
+])(
+  'shows only the type name with $name and preserves the details',
+  ({ other, summary }) => {
+    renderColumns({ other: JSON.stringify(other) })
+    const cell = screen.getByTestId('content')
+    const prefix = within(cell).getByText('Consume')
+    expect(prefix.textContent).toBe('Consume')
+    expect(within(cell).getByRole('button')).toHaveTextContent(summary)
   }
 )
 
@@ -229,14 +252,49 @@ test.each([
   }
 )
 
-test('shows rounded output tokens per second immediately after Stream', () => {
-  renderColumns({ completion_tokens: 101, use_time: 4 })
+test('stacks desktop timing and stream metrics in two left-aligned columns within the existing row height', () => {
+  renderColumns({
+    completion_tokens: 1639,
+    use_time: 39,
+    other: JSON.stringify({ frt: 16900 }),
+  })
   const cell = screen.getByTestId('use_time')
+  const firstToken = within(cell).getByText('16.9 s')
+  const duration = within(cell).getByText('39 s')
   const stream = within(cell).getByText('Stream')
-  expect(stream.nextElementSibling).toHaveTextContent('25 t/s')
-  expect(within(cell).getByText('4 s')).toBeVisible()
-  expect(within(cell).getByText('0.4 s')).toBeVisible()
+  const throughput = within(cell).getByText('42 t/s')
+
+  expect(firstToken.parentElement).toHaveClass('flex-col', 'items-start')
+  expect(firstToken.nextElementSibling).toBe(duration)
+  expect(firstToken).toHaveClass('leading-[15px]')
+  expect(duration).toHaveClass('leading-[15px]')
+  expect(stream.parentElement).toHaveClass(
+    'flex-col',
+    'items-start',
+    'gap-0',
+    'leading-[15px]',
+    '[&>span]:px-0'
+  )
+  expect(stream.nextElementSibling).toBe(throughput)
+  expect(firstToken.parentElement?.nextElementSibling).toBe(
+    stream.parentElement
+  )
+  expect(stream.parentElement?.parentElement).toHaveClass('flex', 'h-7.5')
 })
+
+test.each([false, true])(
+  'keeps the duration visible without a first-token placeholder when streaming=%s and the first-token time is missing',
+  (isStream) => {
+    renderColumns({ is_stream: isStream, other: '{}' })
+    const cell = screen.getByTestId('use_time')
+    expect(within(cell).getAllByText(/ s$/)).toHaveLength(1)
+    expect(within(cell).getByText('4 s')).toBeVisible()
+    expect(
+      within(cell).getByText(isStream ? 'Stream' : 'Non-stream')
+    ).toBeVisible()
+    expect(within(cell).queryByText('—')).not.toBeInTheDocument()
+  }
+)
 
 test.each([
   { is_stream: false, use_time: 4, completion_tokens: 100 },
