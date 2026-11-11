@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
 import {
   Tooltip,
   TooltipContent,
@@ -41,9 +42,14 @@ import {
 import { pluginUsageSchema } from '@/features/pricing/lib/plugin-pricing'
 import { taskUsageUnitLabel } from '@/features/pricing/lib/task-price-display'
 import type { BillingUsageSchema } from '@/features/pricing/types'
+import { toIntlLocale } from '@/i18n/languages'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
-import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
+import {
+  formatLogQuota,
+  formatNumber,
+  formatTimestampToDate,
+} from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { LOG_TYPE_ALL_VALUE, LOG_TYPE_ENUM } from '../../constants'
@@ -68,6 +74,7 @@ import type { LogOtherData } from '../../types'
 import { DetailsDialog } from '../dialogs/details-dialog'
 import { LogCostDisplay } from '../log-cost-display'
 import { ModelBadge } from '../model-badge'
+import { StreamTpsCell } from '../timing-metrics-cell'
 import { useUsageLogsContext } from '../usage-logs-provider'
 
 interface DetailSegment {
@@ -377,7 +384,7 @@ function renderClassicTypeTag(
       const ratio = getEffectiveGroupRatio(other)
       const ratioStr = formatGroupRatio(ratio)
       return (
-        <span className='inline-flex items-center justify-center whitespace-nowrap rounded-full bg-lime-100/70 px-2.5 py-0.5 text-xs font-normal text-lime-800 shadow-2xs dark:bg-lime-950/40 dark:text-lime-300'>
+        <span className='inline-flex items-center justify-center rounded-full bg-lime-100/70 px-2.5 py-0.5 text-xs font-normal whitespace-nowrap text-lime-800 shadow-2xs dark:bg-lime-950/40 dark:text-lime-300'>
           {t('Consume')} {ratioStr}
         </span>
       )
@@ -440,37 +447,54 @@ function getFrtBadgeColor(frtSec: number): string {
  */
 function renderClassicTimingCell(
   useTimeSec: number,
-  _completionTokens: number,
+  completionTokens: number,
   isStream: boolean,
   frtMs: number | undefined,
-  _streamStatus: unknown,
-  t: (k: string) => string
+  streamStatus: LogOtherData['stream_status']
 ) {
   const time = Math.round(useTimeSec)
   const timeColor = getTimingBadgeColor(time)
+  const throughput = completionTokens / useTimeSec
+  const tokensPerSecond =
+    useTimeSec > 0 && completionTokens > 0 && Number.isFinite(throughput)
+      ? throughput
+      : null
 
   const frtSec = frtMs != null && frtMs > 0 ? (frtMs / 1000).toFixed(1) : null
   const frtColor = frtSec != null ? getFrtBadgeColor(Number(frtSec)) : ''
 
   return (
     <div className='flex items-center gap-1 font-mono text-xs whitespace-nowrap'>
-      <span className={cn('rounded-full px-1.5 py-0.5 font-medium shadow-2xs', timeColor)}>
+      <span
+        className={cn(
+          'rounded-full px-1.5 py-0.5 font-medium shadow-2xs',
+          timeColor
+        )}
+      >
         {time} s
       </span>
       {isStream && frtSec && (
-        <span className={cn('rounded-full px-1.5 py-0.5 font-medium shadow-2xs', frtColor)}>
+        <span
+          className={cn(
+            'rounded-full px-1.5 py-0.5 font-medium shadow-2xs',
+            frtColor
+          )}
+        >
           {frtSec} s
         </span>
       )}
-      {isStream ? (
-        <span className='rounded-full bg-blue-50 px-1.5 py-0.5 font-medium text-blue-700 shadow-2xs dark:bg-blue-950/40 dark:text-blue-300'>
-          {t('Stream')}
-        </span>
-      ) : (
-        <span className='rounded-full bg-purple-50 px-1.5 py-0.5 font-medium text-purple-700 shadow-2xs dark:bg-purple-950/40 dark:text-purple-300'>
-          {t('Non-stream')}
-        </span>
-      )}
+      <StreamTpsCell
+        compact
+        isStream={isStream}
+        tokensPerSecond={tokensPerSecond}
+        streamStatus={streamStatus}
+        className={cn(
+          'rounded-full px-1.5 py-0.5 shadow-2xs',
+          isStream
+            ? 'bg-blue-50 dark:bg-blue-950/40'
+            : 'bg-purple-50 dark:bg-purple-950/40'
+        )}
+      />
     </div>
   )
 }
@@ -493,7 +517,7 @@ export function useCommonLogsColumns(
           const isExpanded = row.getIsExpanded()
 
           return (
-            <div className='inline-flex items-center gap-1 font-mono text-xs text-foreground/80 tabular-nums'>
+            <div className='text-foreground/80 inline-flex items-center gap-1 font-mono text-xs tabular-nums'>
               <ChevronRight
                 className={cn(
                   'text-muted-foreground/60 size-3.5 shrink-0 transition-transform duration-200',
@@ -547,7 +571,9 @@ export function useCommonLogsColumns(
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger
-                  render={<div className='inline-flex items-center gap-1 cursor-pointer' />}
+                  render={
+                    <div className='inline-flex cursor-pointer items-center gap-1' />
+                  }
                 >
                   <span className='inline-flex size-6 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700 shadow-2xs dark:bg-blue-950 dark:text-blue-300'>
                     {log.channel}
@@ -586,11 +612,8 @@ export function useCommonLogsColumns(
         header: t('User'),
         accessorFn: (row) => row.username,
         cell: function UserCell({ row }) {
-          const {
-            sensitiveVisible,
-            setSelectedUserId,
-            setUserInfoDialogOpen,
-          } = useUsageLogsContext()
+          const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
+            useUsageLogsContext()
           const log = row.original
           if (!log.username) return null
 
@@ -613,9 +636,7 @@ export function useCommonLogsColumns(
                       : undefined
                   }
                 >
-                  {sensitiveVisible
-                    ? getUserAvatarFallback(log.username)
-                    : '•'}
+                  {sensitiveVisible ? getUserAvatarFallback(log.username) : '•'}
                 </AvatarFallback>
               </Avatar>
               <span className='max-w-[100px] truncate'>
@@ -680,7 +701,7 @@ export function useCommonLogsColumns(
           >
             <span>{sensitiveVisible ? group : '••••'}</span>
             {groupRatio != null && groupRatio !== 1 && (
-              <span className='opacity-70 text-[10px]'>
+              <span className='text-[10px] opacity-70'>
                 ({formatRatioCompact(groupRatio)}x)
               </span>
             )}
@@ -690,19 +711,7 @@ export function useCommonLogsColumns(
       size: 85,
     })
 
-    // 6. Type (独立成列)
-    columns.push({
-      accessorKey: 'type',
-      header: t('Type'),
-      cell: ({ row }) => {
-        const log = row.original
-        const other = parseLogOther(log.other)
-        return renderClassicTypeTag(log.type, other, t)
-      },
-      size: 95,
-    })
-
-    // 7. Model (经典黄色圆角药丸)
+    // Model
     columns.push({
       accessorKey: 'model_name',
       header: t('Model'),
@@ -717,7 +726,7 @@ export function useCommonLogsColumns(
               modelName={modelInfo.name}
               actualModel={modelInfo.actualModel}
               responseModel={modelInfo.responseModel}
-              className='h-6 border-0 bg-transparent px-0 py-0 text-xs font-normal text-foreground shadow-none'
+              className='text-foreground h-6 border-0 bg-transparent px-0 py-0 text-xs font-normal shadow-none'
             />
           </div>
         )
@@ -739,78 +748,67 @@ export function useCommonLogsColumns(
           log.completion_tokens || 0,
           log.is_stream,
           other?.frt,
-          other?.stream_status,
-          t
+          other?.stream_status
         )
       },
-      size: 160,
+      size: 200,
     })
 
-    // 9. Input (提示Tokens，独立成列)
+    // Tokens: input / output, with cache quantities on the second line.
     columns.push({
       accessorKey: 'prompt_tokens',
-      header: () => (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger
-              render={<span className='inline-flex cursor-help items-center gap-1' />}
-            >
-              {t('Input')}
-              <CircleHelp
-                className='text-muted-foreground size-3'
-                aria-hidden='true'
-              />
-            </TooltipTrigger>
-            <TooltipContent className='max-w-xs text-xs'>
-              {t(
-                'According to Anthropic guidelines, prompt tokens exclude cached reads/writes.'
-              )}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      ),
-      cell: ({ row }) => {
+      header: t('Tokens', { context: 'usage' }),
+      cell: function TokensCell({ row }) {
+        const { t, i18n } = useTranslation()
+        const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
+
         const other = parseLogOther(log.other)
-        const cacheRead = other?.cache_tokens || 0
-        const cacheWrite =
-          (other?.cache_creation_tokens_5m || 0) +
-            (other?.cache_creation_tokens_1h || 0) ||
-          other?.cache_creation_tokens ||
-          0
+        const promptTokens = log.prompt_tokens || 0
+        const completionTokens = log.completion_tokens || 0
+        const cacheReadTokens = other?.cache_tokens || 0
+        const cacheWrite5m = other?.cache_creation_tokens_5m || 0
+        const cacheWrite1h = other?.cache_creation_tokens_1h || 0
+        const cacheWriteTokens =
+          cacheWrite5m > 0 || cacheWrite1h > 0
+            ? cacheWrite5m + cacheWrite1h
+            : other?.cache_creation_tokens || 0
+
+        if (
+          promptTokens === 0 &&
+          completionTokens === 0 &&
+          cacheReadTokens === 0 &&
+          cacheWriteTokens === 0
+        ) {
+          return <span className='text-muted-foreground text-xs'>-</span>
+        }
 
         return (
-          <div className='flex flex-col font-mono text-xs tabular-nums text-foreground/80'>
-            <span>{log.prompt_tokens.toLocaleString()}</span>
-            {(cacheRead > 0 || cacheWrite > 0) && (
-              <span className='text-[10px] text-muted-foreground whitespace-nowrap'>
-                {cacheRead > 0 && `读 ${cacheRead.toLocaleString()} `}
-                {cacheWrite > 0 && `写 ${cacheWrite.toLocaleString()}`}
-              </span>
+          <div className='flex flex-col gap-0.5'>
+            <span
+              className='font-mono text-xs font-medium whitespace-nowrap tabular-nums'
+              title={`${t('Input')} / ${t('Output')}`}
+            >
+              {formatNumber(promptTokens, locale)} /{' '}
+              {formatNumber(completionTokens, locale)}
+            </span>
+            {(cacheReadTokens > 0 || cacheWriteTokens > 0) && (
+              <div className='text-muted-foreground flex items-center gap-1 text-[11px] whitespace-nowrap'>
+                {cacheReadTokens > 0 && (
+                  <span>
+                    {t('Cache')}↓ {formatNumber(cacheReadTokens, locale)}
+                  </span>
+                )}
+                {cacheWriteTokens > 0 && (
+                  <span>↑ {formatNumber(cacheWriteTokens, locale)}</span>
+                )}
+              </div>
             )}
           </div>
         )
       },
-      size: 80,
-    })
-
-    // 10. Output (补全Tokens，独立成列)
-    columns.push({
-      accessorKey: 'completion_tokens',
-      header: t('Output'),
-      cell: ({ row }) => {
-        const log = row.original
-        if (!isDisplayableLogType(log.type) || !log.completion_tokens) {
-          return <span className='text-muted-foreground/40 font-mono text-xs'>-</span>
-        }
-        return (
-          <span className='font-mono text-xs tabular-nums text-foreground/80'>
-            {log.completion_tokens.toLocaleString()}
-          </span>
-        )
-      },
-      size: 75,
+      size: 130,
     })
 
     // 11. Cost (花费金额)
@@ -840,7 +838,9 @@ export function useCommonLogsColumns(
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger
-              render={<span className='inline-flex cursor-help items-center gap-1' />}
+              render={
+                <span className='inline-flex cursor-help items-center gap-1' />
+              }
             >
               {t('IP')}
               <CircleHelp
@@ -914,15 +914,22 @@ export function useCommonLogsColumns(
           (renderLogContent(other, t) ?? log.content)
 
         return (
-          <div className='flex items-center gap-1 text-xs'>
-            <button
+          <div className='flex min-w-0 items-center gap-1 text-xs'>
+            <span
+              data-slot='log-type-prefix'
+              className='hidden shrink-0 min-[641px]:inline-flex'
+            >
+              {renderClassicTypeTag(log.type, other, t)}
+            </span>
+            <Button
               type='button'
-              className='max-w-[200px] truncate text-left text-muted-foreground hover:text-foreground hover:underline'
+              variant='link'
+              className='text-muted-foreground hover:text-foreground h-auto max-w-[200px] min-w-0 shrink justify-start p-0 text-left text-xs font-normal'
               onClick={() => setDialogOpen(true)}
               title={summaryText}
             >
-              {summaryText || '—'}
-            </button>
+              <span className='truncate'>{summaryText || '—'}</span>
+            </Button>
             {dialogOpen && (
               <DetailsDialog
                 open={dialogOpen}
@@ -935,7 +942,7 @@ export function useCommonLogsColumns(
           </div>
         )
       },
-      size: 200,
+      size: 240,
     })
 
     return columns
