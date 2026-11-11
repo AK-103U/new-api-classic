@@ -24,12 +24,15 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { api } from '@/lib/api'
+import * as copyUtil from '@/lib/copy-to-clipboard'
 import { useAuthStore } from '@/stores/auth-store'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
+import { ApiInfoItemComponent } from '../api-info-item'
 import { OverviewDashboard } from '../overview-dashboard'
 
 vi.mock('@/context/theme-provider', () => ({
@@ -177,5 +180,54 @@ describe('Classic dashboard overview composition', () => {
     expect(
       screen.getByRole('tab', { name: 'User Consumption Trend' })
     ).toBeVisible()
+  })
+
+  it('renders the Classic API info item layout with status dot, icon actions, copyable URL, and visible description', async () => {
+    const user = userEvent.setup()
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const copySpy = vi
+      .spyOn(copyUtil, 'copyToClipboard')
+      .mockResolvedValue(true)
+    const onTest = vi.fn()
+
+    render(
+      <ApiInfoItemComponent
+        item={{
+          route: 'CN2 GIA',
+          url: 'https://api.example.com',
+          description: 'Recommended for China Mainland Users',
+          color: 'blue',
+        }}
+        status={{ latency: null, testing: false, error: false }}
+        onTest={onTest}
+      />
+    )
+
+    expect(screen.getByText('CN2 GIA')).toBeVisible()
+    expect(
+      screen.getByText('Recommended for China Mainland Users')
+    ).toBeVisible()
+
+    const openLink = screen.getByTitle('Open in New Tab')
+    expect(openLink).toHaveAttribute('href', 'https://api.example.com')
+    expect(openLink).toHaveAttribute('target', '_blank')
+
+    await user.click(screen.getByTitle('Test Latency'))
+    expect(onTest).toHaveBeenCalledWith('https://api.example.com')
+
+    await user.click(screen.getByTitle('External Speed Test'))
+    expect(openSpy).toHaveBeenCalledWith(
+      'https://www.tcptest.cn/http/https%3A%2F%2Fapi.example.com',
+      '_blank',
+      'noopener,noreferrer'
+    )
+
+    await user.click(
+      screen.getByRole('button', { name: 'https://api.example.com' })
+    )
+    expect(copySpy).toHaveBeenCalledWith('https://api.example.com')
+
+    openSpy.mockRestore()
+    copySpy.mockRestore()
   })
 })
