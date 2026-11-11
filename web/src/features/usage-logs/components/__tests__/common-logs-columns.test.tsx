@@ -23,6 +23,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table'
 import { act, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { createInstance } from 'i18next'
 import { I18nextProvider } from 'react-i18next'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -235,20 +236,199 @@ test.each([
 })
 
 test.each([
-  ['en', '12,345 / 6,789'],
-  ['zhCN', '12,345 / 6,789'],
-  ['zhTW', '12,345 / 6,789'],
-  ['fr', '12\u202f345 / 6\u202f789'],
-  ['ru', '12\u00a0345 / 6\u00a0789'],
-  ['ja', '12,345 / 6,789'],
-  ['vi', '12.345 / 6.789'],
-  ['invalid_locale', '12,345 / 6,789'],
+  { cached: 0, percent: '0%', color: 'text-destructive' },
+  { cached: 1999, percent: '19.99%', color: 'text-destructive' },
+  { cached: 2000, percent: '20%', color: 'text-warning' },
+  { cached: 8499, percent: '84.99%', color: 'text-warning' },
+  { cached: 8500, percent: '85%', color: 'text-success' },
+  { cached: 10000, percent: '100%', color: 'text-success' },
 ])(
-  'updates token formatting after switching to %s',
-  async (language, expected) => {
-    renderColumns({ prompt_tokens: 12345, completion_tokens: 6789 })
+  'colors a reported cache hit rate of $percent as $color',
+  ({ cached, percent, color }) => {
+    renderColumns({
+      prompt_tokens: 10000,
+      other: JSON.stringify({ cache_tokens: cached }),
+    })
+    const rate = within(screen.getByTestId('prompt_tokens')).getByLabelText(
+      `Cache hit rate: ${percent}`
+    )
+    expect(rate).toHaveTextContent(percent)
+    expect(rate).toHaveClass(color)
+  }
+)
+
+test('keeps the cache hit rate after the input/output counts and restores upstream cache colors', async () => {
+  const user = userEvent.setup()
+  renderColumns({
+    other: JSON.stringify({ cache_tokens: 900, cache_creation_tokens: 200 }),
+  })
+  const cell = screen.getByTestId('prompt_tokens')
+  const counts = within(cell).getByText('1,200 / 340')
+  const rate = within(cell).getByLabelText('Cache hit rate: 75%')
+  const read = within(cell).getByText('Cache↓ 900')
+  const write = within(cell).getByText('↑ 200')
+
+  expect(counts.parentElement).toHaveClass(
+    'flex',
+    'items-center',
+    'whitespace-nowrap'
+  )
+  expect(counts.nextElementSibling).toBe(rate)
+  expect(rate).toHaveClass('shrink-0')
+  expect(read).toHaveClass('text-muted-foreground/60')
+  expect(write).toHaveClass('text-muted-foreground/60')
+  expect(counts.parentElement?.nextElementSibling).toBe(read.parentElement)
+
+  await user.hover(rate)
+  expect(await screen.findByText('Cache hit rate')).toBeVisible()
+  await user.unhover(rate)
+  await user.tab()
+  expect(rate).toHaveFocus()
+  expect(await screen.findByText('Cache hit rate')).toBeVisible()
+})
+
+test.each([
+  {
+    name: 'normalized total takes priority',
+    prompt: 100,
+    other: { cache_tokens: 900, input_tokens_total: 1200, claude: true },
+    percent: '75%',
+  },
+  {
+    name: 'Claude excludes cache reads and writes from prompt tokens',
+    prompt: 100,
+    other: { claude: true, cache_tokens: 900, cache_creation_tokens: 200 },
+    percent: '75%',
+  },
+  {
+    name: 'Anthropic usage is independent of the request format',
+    prompt: 100,
+    other: {
+      usage_semantic: 'anthropic',
+      cache_tokens: 900,
+      cache_creation_tokens_5m: 100,
+      cache_creation_tokens_1h: 100,
+    },
+    percent: '75%',
+  },
+  {
+    name: 'OpenAI semantics override the legacy Claude flag',
+    prompt: 1200,
+    other: { usage_semantic: 'openai', claude: true, cache_tokens: 900 },
+    percent: '75%',
+  },
+  {
+    name: 'normalized cache writes include unlabelled writes',
+    prompt: 100,
+    other: {
+      claude: true,
+      cache_tokens: 900,
+      cache_write_tokens: 800,
+      cache_creation_tokens_5m: 100,
+      cache_creation_tokens_1h: 100,
+    },
+    percent: '50%',
+  },
+  {
+    name: 'aggregate writes are not added to their TTL split',
+    prompt: 100,
+    other: {
+      claude: true,
+      cache_tokens: 900,
+      cache_creation_tokens: 200,
+      cache_creation_tokens_5m: 100,
+      cache_creation_tokens_1h: 100,
+    },
+    percent: '75%',
+  },
+  {
+    name: 'aggregate writes retain the unlabelled remainder',
+    prompt: 100,
+    other: {
+      claude: true,
+      cache_tokens: 900,
+      cache_creation_tokens: 800,
+      cache_creation_tokens_5m: 100,
+      cache_creation_tokens_1h: 100,
+    },
+    percent: '50%',
+  },
+  {
+    name: 'cache-only Claude input is fully cached',
+    prompt: 0,
+    other: { claude: true, cache_tokens: 900 },
+    percent: '100%',
+  },
+])(
+  'uses the total input denominator when $name',
+  ({ prompt, other, percent }) => {
+    renderColumns({ prompt_tokens: prompt, other: JSON.stringify(other) })
+    expect(
+      within(screen.getByTestId('prompt_tokens')).getByLabelText(
+        `Cache hit rate: ${percent}`
+      )
+    ).toBeVisible()
+  }
+)
+
+test.each([
+  { name: 'no cache data', prompt: 1200, other: '{}' },
+  {
+    name: 'cache writes without a reported read count',
+    prompt: 1200,
+    other: '{"cache_creation_tokens":200}',
+  },
+  { name: 'negative reads', prompt: 1200, other: '{"cache_tokens":-1}' },
+  { name: 'invalid reads', prompt: 1200, other: '{"cache_tokens":"900"}' },
+  { name: 'non-finite reads', prompt: 1200, other: '{"cache_tokens":1e400}' },
+  {
+    name: 'reads exceed total input',
+    prompt: 1200,
+    other: '{"cache_tokens":1201}',
+  },
+  { name: 'zero total input', prompt: 0, other: '{"cache_tokens":0}' },
+  {
+    name: 'invalid explicit total',
+    prompt: 1200,
+    other: '{"cache_tokens":900,"input_tokens_total":-1}',
+  },
+  {
+    name: 'invalid cache writes in a Claude denominator',
+    prompt: 100,
+    other: '{"claude":true,"cache_tokens":900,"cache_creation_tokens":-1}',
+  },
+])('hides the cache hit rate for $name', ({ prompt, other }) => {
+  renderColumns({ prompt_tokens: prompt, other })
+  expect(
+    within(screen.getByTestId('prompt_tokens')).queryByLabelText(
+      /^Cache hit rate:/
+    )
+  ).not.toBeInTheDocument()
+})
+
+test.each([
+  ['en', '12,345 / 6,789', '79.99%'],
+  ['zhCN', '12,345 / 6,789', '79.99%'],
+  ['zhTW', '12,345 / 6,789', '79.99%'],
+  ['fr', '12\u202f345 / 6\u202f789', '79,99%'],
+  ['ru', '12\u00a0345 / 6\u00a0789', '79,99%'],
+  ['ja', '12,345 / 6,789', '79.99%'],
+  ['vi', '12.345 / 6.789', '79,99%'],
+  ['invalid_locale', '12,345 / 6,789', '79.99%'],
+])(
+  'updates token and cache hit formatting after switching to %s',
+  async (language, expected, percent) => {
+    renderColumns({
+      prompt_tokens: 12345,
+      completion_tokens: 6789,
+      other: JSON.stringify({ cache_tokens: 9875 }),
+    })
     await act(() => i18n.changeLanguage(language))
-    expect(screen.getByTestId('prompt_tokens').textContent).toBe(expected)
+    const cell = screen.getByTestId('prompt_tokens')
+    expect(within(cell).getByTitle('Input / Output').textContent).toBe(expected)
+    expect(
+      within(cell).getByLabelText(`Cache hit rate: ${percent}`)
+    ).toHaveTextContent(percent)
   }
 )
 

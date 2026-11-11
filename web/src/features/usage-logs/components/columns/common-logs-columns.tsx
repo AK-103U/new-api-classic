@@ -21,7 +21,7 @@ import { ChevronRight, CircleHelp, Sparkles } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { StatusBadge } from '@/components/status-badge'
+import { StatusBadge, type StatusVariant } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
@@ -58,6 +58,7 @@ import {
   formatModelName,
   decodeBillingExprB64,
   getTieredBillingSummary,
+  getCacheHitRate,
   hasAnyCacheTokens,
   parseLogOther,
   isViolationFeeLog,
@@ -726,7 +727,7 @@ export function useCommonLogsColumns(
       size: 200,
     })
 
-    // Tokens: input / output, with cache quantities on the second line.
+    // Tokens: input / output and cache hit rate, with cache counts below.
     columns.push({
       accessorKey: 'prompt_tokens',
       header: t('Tokens', { context: 'usage' }),
@@ -756,24 +757,59 @@ export function useCommonLogsColumns(
           return <span className='text-muted-foreground text-xs'>-</span>
         }
 
+        const cacheHitRate = getCacheHitRate(promptTokens, other)
+        const cacheHitLabel = `${formatNumber(cacheHitRate, locale)}%`
+        let cacheHitVariant: StatusVariant = 'warning'
+        if (cacheHitRate != null && cacheHitRate < 20) {
+          cacheHitVariant = 'danger'
+        } else if (cacheHitRate != null && cacheHitRate >= 85) {
+          cacheHitVariant = 'success'
+        }
+
         return (
           <div className='flex flex-col gap-0.5'>
-            <span
-              className='font-mono text-xs font-medium whitespace-nowrap tabular-nums'
-              title={`${t('Input')} / ${t('Output')}`}
-            >
-              {formatNumber(promptTokens, locale)} /{' '}
-              {formatNumber(completionTokens, locale)}
-            </span>
+            <div className='flex items-center gap-1.5 whitespace-nowrap'>
+              <span
+                className='font-mono text-xs font-medium tabular-nums'
+                title={`${t('Input')} / ${t('Output')}`}
+              >
+                {formatNumber(promptTokens, locale)} /{' '}
+                {formatNumber(completionTokens, locale)}
+              </span>
+              {cacheHitRate != null && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <StatusBadge
+                          type='text'
+                          variant={cacheHitVariant}
+                          copyable={false}
+                          title={undefined}
+                          tabIndex={0}
+                          aria-label={`${t('Cache hit rate')}: ${cacheHitLabel}`}
+                          className='shrink-0 cursor-help font-mono text-[11px]! font-normal'
+                        />
+                      }
+                    >
+                      {cacheHitLabel}
+                    </TooltipTrigger>
+                    <TooltipContent>{t('Cache hit rate')}</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
             {(cacheReadTokens > 0 || cacheWriteTokens > 0) && (
-              <div className='text-muted-foreground flex items-center gap-1 text-[11px] whitespace-nowrap'>
+              <div className='flex items-center gap-1 text-[11px] whitespace-nowrap'>
                 {cacheReadTokens > 0 && (
-                  <span>
+                  <span className='text-muted-foreground/60'>
                     {t('Cache')}↓ {formatNumber(cacheReadTokens, locale)}
                   </span>
                 )}
                 {cacheWriteTokens > 0 && (
-                  <span>↑ {formatNumber(cacheWriteTokens, locale)}</span>
+                  <span className='text-muted-foreground/60'>
+                    ↑ {formatNumber(cacheWriteTokens, locale)}
+                  </span>
                 )}
               </div>
             )}

@@ -342,6 +342,62 @@ export function hasAnyCacheTokens(
   )
 }
 
+/** Cache-read share of total input, rounded to two decimal places for display. */
+export function getCacheHitRate(
+  promptTokens: number,
+  other: LogOtherData | null
+): number | null {
+  const cacheReadTokens = other?.cache_tokens
+  if (
+    cacheReadTokens == null ||
+    !Number.isFinite(cacheReadTokens) ||
+    cacheReadTokens < 0 ||
+    !Number.isFinite(promptTokens) ||
+    promptTokens < 0
+  ) {
+    return null
+  }
+
+  let totalInputTokens = other?.input_tokens_total
+  if (totalInputTokens == null) {
+    totalInputTokens = promptTokens
+    const excludesCache =
+      other?.usage_semantic === 'anthropic' ||
+      (other?.usage_semantic == null && other?.claude === true)
+    if (excludesCache) {
+      const cacheWrites = [
+        other?.cache_write_tokens ?? 0,
+        other?.cache_creation_tokens ?? 0,
+        other?.cache_creation_tokens_5m ?? 0,
+        other?.cache_creation_tokens_1h ?? 0,
+        other?.cache_creation_tokens_12h ?? 0,
+      ]
+      if (cacheWrites.some((value) => !Number.isFinite(value) || value < 0)) {
+        return null
+      }
+      const cacheWriteTokens =
+        other?.cache_write_tokens ??
+        Math.max(
+          other?.cache_creation_tokens ?? 0,
+          (other?.cache_creation_tokens_5m ?? 0) +
+            (other?.cache_creation_tokens_1h ?? 0) +
+            (other?.cache_creation_tokens_12h ?? 0)
+        )
+      // Claude's prompt count excludes reads and writes; OpenAI's includes them.
+      totalInputTokens += cacheReadTokens + cacheWriteTokens
+    }
+  }
+
+  if (
+    !Number.isFinite(totalInputTokens) ||
+    totalInputTokens <= 0 ||
+    cacheReadTokens > totalInputTokens
+  ) {
+    return null
+  }
+  return Math.round((cacheReadTokens / totalInputTokens) * 10000) / 100
+}
+
 export function getTieredBillingSummary(
   other: LogOtherData | null
 ): TieredBillingSummary | null {
