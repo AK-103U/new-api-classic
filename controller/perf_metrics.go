@@ -2,6 +2,7 @@ package controller
 
 import (
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
@@ -26,6 +27,11 @@ func GetPerfMetricsSummary(c *gin.Context) {
 		return
 	}
 	activeGroups := append(lo.Keys(ratio_setting.GetGroupRatioCopy()), "auto")
+	if group := c.Query("group"); group != "" {
+		activeGroups = slices.DeleteFunc(activeGroups, func(activeGroup string) bool {
+			return activeGroup != group
+		})
+	}
 	result, err := perfmetrics.QuerySummaryAll(hours, activeGroups, recentModels...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{

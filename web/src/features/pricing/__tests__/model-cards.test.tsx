@@ -38,6 +38,7 @@ import {
 import { CachedPriceCell } from '../components/cached-price-cell'
 import { ModelCard } from '../components/model-card'
 import { ModelCardGrid } from '../components/model-card-grid'
+import { FILTER_ALL } from '../constants'
 import type { PricingModel } from '../types'
 
 function pricingModel(overrides: Partial<PricingModel> = {}): PricingModel {
@@ -578,6 +579,169 @@ describe('model cards', () => {
     expect(screen.getByText(expression)).toBeVisible()
   })
 
+  it('switches card metrics and status samples between all groups and the selected group', async () => {
+    queryClient.setDefaultOptions({
+      queries: { retry: false, gcTime: Infinity },
+    })
+    const request = vi
+      .spyOn(api, 'get')
+      .mockImplementation(async (_, config) => {
+        const group = (config?.params as { group?: string } | undefined)?.group
+        let successRate = 75
+        if (group === 'default') successRate = 100
+        else if (group === 'premium') successRate = 0
+        return {
+          data: {
+            success: true,
+            data: {
+              models: [
+                {
+                  model_name: 'example-model',
+                  success_rate: successRate,
+                  avg_latency_ms: group === 'premium' ? 3000 : 1000,
+                  avg_tps: group === 'premium' ? 10 : 40,
+                },
+              ],
+              recent_success_series: {
+                'example-model': [{ ts: 3600, success_rate: successRate }],
+              },
+            },
+          },
+        }
+      })
+    const model = pricingModel()
+    const onModelClick = vi.fn()
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <ModelCardGrid
+          models={[model]}
+          onModelClick={onModelClick}
+          selectedGroup={FILTER_ALL}
+        />
+      </QueryClientProvider>
+    )
+    await screen.findByText('75.00%')
+    expect(request).toHaveBeenLastCalledWith('/api/perf-metrics/summary', {
+      params: { hours: 24, recent_model: ['example-model'] },
+      paramsSerializer: { indexes: null },
+    })
+
+    for (const group of ['default', 'premium', FILTER_ALL]) {
+      rerender(
+        <QueryClientProvider client={queryClient}>
+          <ModelCardGrid
+            models={[model]}
+            onModelClick={onModelClick}
+            selectedGroup={group}
+          />
+        </QueryClientProvider>
+      )
+      let expectedRate = '75.00%'
+      let expectedColor = 'bg-amber-500'
+      if (group === 'default') {
+        expectedRate = '100.00%'
+        expectedColor = 'bg-emerald-500'
+      } else if (group === 'premium') {
+        expectedRate = '0.00%'
+        expectedColor = 'bg-red-500'
+      }
+      await screen.findByText(expectedRate)
+      expect(
+        screen.getByRole('img', { name: 'Success rate' }).children[0]
+      ).toHaveClass(expectedColor)
+      const metrics = screen.getByLabelText(
+        'Performance metrics for the last 24 hours'
+      )
+      expect(
+        within(metrics).getByText(group === 'premium' ? '3.00s' : '1.00s')
+      ).toBeVisible()
+      expect(
+        within(metrics).getByText(group === 'premium' ? '10.0t/s' : '40.0t/s')
+      ).toBeVisible()
+    }
+    expect(request).toHaveBeenCalledWith('/api/perf-metrics/summary', {
+      params: { hours: 24, recent_model: ['example-model'], group: 'premium' },
+      paramsSerializer: { indexes: null },
+    })
+  })
+
+  it.each(['empty', 'failure'])(
+    'does not reuse another group’s metrics for a selected group with an empty or failed response (%s)',
+    async (outcome) => {
+      let finishRequest: (() => void) | undefined
+      vi.spyOn(api, 'get').mockImplementation((_, config) => {
+        const group = (config?.params as { group?: string } | undefined)?.group
+        if (!group) {
+          return Promise.resolve({
+            data: {
+              success: true,
+              data: {
+                models: [
+                  {
+                    model_name: 'example-model',
+                    success_rate: 100,
+                    avg_latency_ms: 1000,
+                    avg_tps: 40,
+                  },
+                ],
+                recent_success_series: {
+                  'example-model': [{ ts: 3600, success_rate: 100 }],
+                },
+              },
+            },
+          })
+        }
+        return new Promise((resolve, reject) => {
+          finishRequest = () => {
+            if (outcome === 'failure') {
+              reject(new Error('metrics unavailable'))
+            } else {
+              resolve({
+                data: {
+                  success: true,
+                  data: { models: [], recent_success_series: {} },
+                },
+              })
+            }
+          }
+        })
+      })
+      const model = pricingModel()
+      const onModelClick = vi.fn()
+      const { rerender } = render(
+        <QueryClientProvider client={queryClient}>
+          <ModelCardGrid
+            models={[model]}
+            onModelClick={onModelClick}
+            selectedGroup={FILTER_ALL}
+          />
+        </QueryClientProvider>
+      )
+      await screen.findByText('100.00%')
+      rerender(
+        <QueryClientProvider client={queryClient}>
+          <ModelCardGrid
+            models={[model]}
+            onModelClick={onModelClick}
+            selectedGroup='premium'
+          />
+        </QueryClientProvider>
+      )
+      expect(screen.queryByText('100.00%')).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('img', { name: 'No performance data available' })
+      ).toHaveTextContent('—')
+      await waitFor(() => expect(finishRequest).toBeDefined())
+      await act(async () => finishRequest?.())
+      await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+      const metrics = screen.getByLabelText(
+        'Performance metrics for the last 24 hours'
+      )
+      expect(within(metrics).getAllByText(/^—/)).toHaveLength(4)
+      expect(screen.queryByText('100.00%')).not.toBeInTheDocument()
+    }
+  )
+
   it('keeps browsing and missing metric values available after the metrics request fails', async () => {
     const request = vi
       .spyOn(api, 'get')
@@ -594,6 +758,7 @@ describe('model cards', () => {
           'perf-metrics-summary',
           24,
           ['example-model'],
+          undefined,
         ])?.status
       ).toBe('error')
     )
@@ -646,10 +811,13 @@ describe('model cards', () => {
   })
 
   it('switches the card grid to three columns at the xl breakpoint instead of 2xl', () => {
-    queryClient.setQueryData(['perf-metrics-summary', 24, ['example-model']], {
-      success: true,
-      data: { models: [] },
-    })
+    queryClient.setQueryData(
+      ['perf-metrics-summary', 24, ['example-model'], undefined],
+      {
+        success: true,
+        data: { models: [] },
+      }
+    )
     render(
       <QueryClientProvider client={queryClient}>
         <ModelCardGrid models={[pricingModel()]} onModelClick={vi.fn()} />

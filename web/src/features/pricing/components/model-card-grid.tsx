@@ -25,7 +25,11 @@ import { Button } from '@/components/ui/button'
 import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
-import { DEFAULT_PRICING_PAGE_SIZE, DEFAULT_TOKEN_UNIT } from '../constants'
+import {
+  DEFAULT_PRICING_PAGE_SIZE,
+  DEFAULT_TOKEN_UNIT,
+  FILTER_ALL,
+} from '../constants'
 import type { PricingModel, TokenUnit } from '../types'
 import { ModelCard } from './model-card'
 import type { ModelPerfBadgeData } from './model-perf-badge'
@@ -55,10 +59,16 @@ export const ModelCardGrid = memo(function ModelCardGrid(
     return props.models.slice(start, start + pageSize)
   }, [currentPage, pageSize, props.models])
   const recentModels = pagedModels.map((model) => model.model_name || '')
+  const group =
+    props.selectedGroup && props.selectedGroup !== FILTER_ALL
+      ? props.selectedGroup
+      : undefined
   const perfQuery = useQuery({
-    queryKey: ['perf-metrics-summary', 24, recentModels],
+    queryKey: ['perf-metrics-summary', 24, recentModels, group],
     queryFn: async () =>
-      requireServerSuccess(await getPerfMetricsSummary(24, recentModels)),
+      requireServerSuccess(
+        await getPerfMetricsSummary(24, recentModels, group)
+      ),
     enabled: recentModels.length > 0,
     staleTime: 60 * 1000,
     retry: false,
